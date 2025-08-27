@@ -1,0 +1,16 @@
+EXECUTING: D:\Android\Sdk\platform-tools\adb.exe -H localhost -P 5037 -s emulator-5556 shell rm -rf "/sdcard/Android/media/com.google.jetstream.benchmark/additional_test_output"
+CURRENT_WORKING_DIRECTORY: E:\tv-samples\JetStreamCompose
+START_TIME: 2025-08-27 10:24:20.944
+START_TIME-NANOS: 2025-08-27 10:24:20.944121600
+ENVIRONMENT:
+ANDROID_SDK_HOME=D:\Android\Sdk
+ANDROID_ADB=D:\Android\Sdk\platform-tools\adb.exe
+*****************************************
+STDOUT/STDERR BELOW
+===================
+
+===================
+END_TIME: 2025-08-27 10:24:21.075
+END_TIME-NANOS: 2025-08-27 10:24:21.075759100
+DURATION: 131ms
+EXIT CODE: 0

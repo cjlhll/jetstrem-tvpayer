@@ -1,0 +1,73 @@
+EXECUTING: D:\Android\Sdk\platform-tools\adb.exe -s emulator-5556 shell getprop sys.boot_completed
+CURRENT_WORKING_DIRECTORY: E:\tv-samples\JetStreamCompose
+START_TIME: 2025-08-27 10:23:33.111
+START_TIME-NANOS: 2025-08-27 10:23:33.111054400
+ENVIRONMENT:
+USERDOMAIN_ROAMINGPROFILE=DESKTOP-422MAIH
+NVM_SYMLINK=D:\Program Files\nodejs
+PROCESSOR_LEVEL=6
+SESSIONNAME=Console
+ALLUSERSPROFILE=C:\ProgramData
+PROCESSOR_ARCHITECTURE=AMD64
+VSCODE_GIT_IPC_HANDLE=\\.\pipe\vscode-git-51e65e9c6a-sock
+PSModulePath=C:\Users\caojian\Documents\WindowsPowerShell\Modules;C:\Program Files\WindowsPowerShell\Modules;C:\Windows\system32\WindowsPowerShell\v1.0\Modules
+SystemDrive=C:
+=E:=E:\tv-samples\JetStreamCompose
+VSCODE_INJECTION=1
+COLORTERM=truecolor
+DIRNAME=E:\tv-samples\JetStreamCompose\
+USERNAME=caojian
+VSCODE_GIT_ASKPASS_NODE=D:\Program Files\Microsoft VS Code\Code.exe
+TERM_PROGRAM_VERSION=1.103.2
+GIT_ASKPASS=d:\Program Files\Microsoft VS Code\resources\app\extensions\git\dist\askpass.sh
+ProgramFiles(x86)=C:\Program Files (x86)
+CHROME_CRASHPAD_PIPE_NAME=\\.\pipe\crashpad_9020_RAFMTMOWSSYTWQMU
+APP_HOME=E:\tv-samples\JetStreamCompose\
+DEFAULT_JVM_OPTS="-Xmx64m" "-Xms64m"
+PATHEXT=.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.PY;.PYW;.CPL
+DriverData=C:\Windows\System32\Drivers\DriverData
+ORIGINAL_XDG_CURRENT_DESKTOP=undefined
+ProgramData=C:\ProgramData
+ProgramW6432=C:\Program Files
+HOMEPATH=\Users\caojian
+PROCESSOR_IDENTIFIER=Intel64 Family 6 Model 165 Stepping 3, GenuineIntel
+ProgramFiles=C:\Program Files
+PUBLIC=C:\Users\Public
+windir=C:\Windows
+LOCALAPPDATA=C:\Users\caojian\AppData\Local
+USERDOMAIN=DESKTOP-422MAIH
+LOGONSERVER=\\DESKTOP-422MAIH
+JAVA_HOME=D:\Program Files\Android\Android Studio\jbr
+PROMPT=$P$G
+LANG=en_US.UTF-8
+VSCODE_GIT_ASKPASS_MAIN=d:\Program Files\Microsoft VS Code\resources\app\extensions\git\dist\askpass-main.js
+OneDrive=C:\Users\caojian\OneDrive
+APPDATA=C:\Users\caojian\AppData\Roaming
+JAVA_EXE=D:\Program Files\Android\Android Studio\jbr/bin/java.exe
+CommonProgramFiles=C:\Program Files\Common Files
+Path=D:\Program Files\Python310\Scripts\;D:\Program Files\Python310\;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;C:\Windows\System32\OpenSSH\;D:\Program Files\nvm;D:\Program Files\nodejs;D:\Program Files\Git\cmd;D:\Program Files (x86)\Tencent\微信web开发者工具\dll;C:\Program Files\dotnet\;d:\Program Files\cursor\resources\app\bin;c:\Users\caojian\AppData\Local\Programs\cursor\resources\app\bin;D:\Program Files\Android\Android Studio\jbr\bin;C:\Users\caojian\AppData\Local\Microsoft\WindowsApps;D:\Program Files\nvm;D:\Program Files\nodejs;D:\Program Files\Microsoft VS Code\bin;C:\Users\caojian\AppData\Local\Programs\cursor\resources\app\bin;D:\Program Files\Qoder\bin
+OS=Windows_NT
+TERM_PROGRAM=vscode
+COMPUTERNAME=DESKTOP-422MAIH
+NVM_HOME=D:\Program Files\nvm
+PROCESSOR_REVISION=a503
+CLASSPATH=E:\tv-samples\JetStreamCompose\\gradle\wrapper\gradle-wrapper.jar
+CommonProgramW6432=C:\Program Files\Common Files
+ComSpec=C:\Windows\system32\cmd.exe
+APP_BASE_NAME=gradlew
+SystemRoot=C:\Windows
+TEMP=C:\Users\caojian\AppData\Local\Temp
+HOMEDRIVE=C:
+USERPROFILE=C:\Users\caojian
+TMP=C:\Users\caojian\AppData\Local\Temp
+CommonProgramFiles(x86)=C:\Program Files (x86)\Common Files
+NUMBER_OF_PROCESSORS=12
+*****************************************
+STDOUT/STDERR BELOW
+===================
+1
+===================
+END_TIME: 2025-08-27 10:23:34.882
+END_TIME-NANOS: 2025-08-27 10:23:34.882060400
+DURATION: 1771ms
+EXIT CODE: 0

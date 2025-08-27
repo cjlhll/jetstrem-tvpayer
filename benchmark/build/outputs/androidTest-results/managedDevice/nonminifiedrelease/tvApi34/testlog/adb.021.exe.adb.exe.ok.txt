@@ -1,0 +1,16 @@
+EXECUTING: D:\Android\Sdk\platform-tools\adb.exe -H localhost -P 5037 -s emulator-5556 shell settings put global verifier_verify_adb_installs 0
+CURRENT_WORKING_DIRECTORY: E:\tv-samples\JetStreamCompose
+START_TIME: 2025-08-27 10:23:45.652
+START_TIME-NANOS: 2025-08-27 10:23:45.652877000
+ENVIRONMENT:
+ANDROID_SDK_HOME=D:\Android\Sdk
+ANDROID_ADB=D:\Android\Sdk\platform-tools\adb.exe
+*****************************************
+STDOUT/STDERR BELOW
+===================
+
+===================
+END_TIME: 2025-08-27 10:23:47.185
+END_TIME-NANOS: 2025-08-27 10:23:47.185991300
+DURATION: 1533ms
+EXIT CODE: 0

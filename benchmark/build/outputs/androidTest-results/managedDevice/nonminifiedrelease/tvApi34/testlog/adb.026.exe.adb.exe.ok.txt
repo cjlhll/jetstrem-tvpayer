@@ -1,0 +1,17 @@
+EXECUTING: D:\Android\Sdk\platform-tools\adb.exe -H localhost -P 5037 -s emulator-5556 shell date +%m-%d\ %H:%M:%S
+CURRENT_WORKING_DIRECTORY: E:\tv-samples\JetStreamCompose
+START_TIME: 2025-08-27 10:24:20.089
+START_TIME-NANOS: 2025-08-27 10:24:20.089492000
+ENVIRONMENT:
+ANDROID_SDK_HOME=D:\Android\Sdk
+ANDROID_ADB=D:\Android\Sdk\platform-tools\adb.exe
+*****************************************
+STDOUT/STDERR BELOW
+===================
+08-27 02:24:17
+
+===================
+END_TIME: 2025-08-27 10:24:20.798
+END_TIME-NANOS: 2025-08-27 10:24:20.798968100
+DURATION: 709ms
+EXIT CODE: 0

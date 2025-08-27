@@ -1,0 +1,8 @@
+INSTRUMENTATION_STATUS: class=com.google.jetstream.benchmark.BaselineProfileGenerator
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=3
+INSTRUMENTATION_STATUS: stream=
+com.google.jetstream.benchmark.BaselineProfileGenerator:
+INSTRUMENTATION_STATUS: test=startup
+INSTRUMENTATION_STATUS_CODE: 1

@@ -1,0 +1,20 @@
+EXECUTING: D:\Android\Sdk\platform-tools\adb.exe -H localhost -P 5037 -s emulator-5556 emu avd name
+CURRENT_WORKING_DIRECTORY: E:\tv-samples\JetStreamCompose
+START_TIME: 2025-08-27 10:23:43.730
+START_TIME-NANOS: 2025-08-27 10:23:43.730843200
+ENVIRONMENT:
+ANDROID_SDK_HOME=D:\Android\Sdk
+ANDROID_ADB=D:\Android\Sdk\platform-tools\adb.exe
+*****************************************
+STDOUT/STDERR BELOW
+===================
+dev34_default_x86_64_Television__1080p_
+
+OK
+
+
+===================
+END_TIME: 2025-08-27 10:23:43.846
+END_TIME-NANOS: 2025-08-27 10:23:43.846431800
+DURATION: 115ms
+EXIT CODE: 0

@@ -1,0 +1,200 @@
+EXECUTING: D:\Android\Sdk\emulator\emulator.exe @dev34_default_x86_64_Television__1080p_ -no-window -no-audio -gpu auto-no-window -read-only -no-snapshot-save -no-boot-anim -delay-adb -id :benchmark:tvApi34NonMinifiedReleaseAndroidTest
+CURRENT_WORKING_DIRECTORY: E:\tv-samples\JetStreamCompose
+START_TIME: 2025-08-27 10:23:25.909
+START_TIME-NANOS: 2025-08-27 10:23:25.909540000
+ENVIRONMENT:
+USERDOMAIN_ROAMINGPROFILE=DESKTOP-422MAIH
+NVM_SYMLINK=D:\Program Files\nodejs
+PROCESSOR_LEVEL=6
+SESSIONNAME=Console
+ALLUSERSPROFILE=C:\ProgramData
+PROCESSOR_ARCHITECTURE=AMD64
+VSCODE_GIT_IPC_HANDLE=\\.\pipe\vscode-git-51e65e9c6a-sock
+PSModulePath=C:\Users\caojian\Documents\WindowsPowerShell\Modules;C:\Program Files\WindowsPowerShell\Modules;C:\Windows\system32\WindowsPowerShell\v1.0\Modules
+SystemDrive=C:
+=E:=E:\tv-samples\JetStreamCompose
+VSCODE_INJECTION=1
+COLORTERM=truecolor
+DIRNAME=E:\tv-samples\JetStreamCompose\
+USERNAME=caojian
+VSCODE_GIT_ASKPASS_NODE=D:\Program Files\Microsoft VS Code\Code.exe
+TERM_PROGRAM_VERSION=1.103.2
+GIT_ASKPASS=d:\Program Files\Microsoft VS Code\resources\app\extensions\git\dist\askpass.sh
+ProgramFiles(x86)=C:\Program Files (x86)
+CHROME_CRASHPAD_PIPE_NAME=\\.\pipe\crashpad_9020_RAFMTMOWSSYTWQMU
+APP_HOME=E:\tv-samples\JetStreamCompose\
+DEFAULT_JVM_OPTS="-Xmx64m" "-Xms64m"
+PATHEXT=.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.PY;.PYW;.CPL
+DriverData=C:\Windows\System32\Drivers\DriverData
+ORIGINAL_XDG_CURRENT_DESKTOP=undefined
+ProgramData=C:\ProgramData
+ProgramW6432=C:\Program Files
+HOMEPATH=\Users\caojian
+PROCESSOR_IDENTIFIER=Intel64 Family 6 Model 165 Stepping 3, GenuineIntel
+ProgramFiles=C:\Program Files
+PUBLIC=C:\Users\Public
+windir=C:\Windows
+LOCALAPPDATA=C:\Users\caojian\AppData\Local
+USERDOMAIN=DESKTOP-422MAIH
+LOGONSERVER=\\DESKTOP-422MAIH
+JAVA_HOME=D:\Program Files\Android\Android Studio\jbr
+PROMPT=$P$G
+LANG=en_US.UTF-8
+VSCODE_GIT_ASKPASS_MAIN=d:\Program Files\Microsoft VS Code\resources\app\extensions\git\dist\askpass-main.js
+OneDrive=C:\Users\caojian\OneDrive
+APPDATA=C:\Users\caojian\AppData\Roaming
+JAVA_EXE=D:\Program Files\Android\Android Studio\jbr/bin/java.exe
+CommonProgramFiles=C:\Program Files\Common Files
+Path=D:\Program Files\Python310\Scripts\;D:\Program Files\Python310\;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;C:\Windows\System32\OpenSSH\;D:\Program Files\nvm;D:\Program Files\nodejs;D:\Program Files\Git\cmd;D:\Program Files (x86)\Tencent\微信web开发者工具\dll;C:\Program Files\dotnet\;d:\Program Files\cursor\resources\app\bin;c:\Users\caojian\AppData\Local\Programs\cursor\resources\app\bin;D:\Program Files\Android\Android Studio\jbr\bin;C:\Users\caojian\AppData\Local\Microsoft\WindowsApps;D:\Program Files\nvm;D:\Program Files\nodejs;D:\Program Files\Microsoft VS Code\bin;C:\Users\caojian\AppData\Local\Programs\cursor\resources\app\bin;D:\Program Files\Qoder\bin
+OS=Windows_NT
+TERM_PROGRAM=vscode
+COMPUTERNAME=DESKTOP-422MAIH
+NVM_HOME=D:\Program Files\nvm
+PROCESSOR_REVISION=a503
+CLASSPATH=E:\tv-samples\JetStreamCompose\\gradle\wrapper\gradle-wrapper.jar
+CommonProgramW6432=C:\Program Files\Common Files
+ComSpec=C:\Windows\system32\cmd.exe
+APP_BASE_NAME=gradlew
+SystemRoot=C:\Windows
+TEMP=C:\Users\caojian\AppData\Local\Temp
+HOMEDRIVE=C:
+USERPROFILE=C:\Users\caojian
+TMP=C:\Users\caojian\AppData\Local\Temp
+CommonProgramFiles(x86)=C:\Program Files (x86)\Common Files
+NUMBER_OF_PROCESSORS=12
+ANDROID_AVD_HOME=C:\Users\caojian\.android\avd\gradle-managed
+*****************************************
+STDOUT/STDERR BELOW
+===================
+INFO         | Android emulator version 36.1.9.0 (build_id 13823996) (CL:N/A)
+INFO         | Graphics backend: gfxstream
+INFO         | Found systemPath D:\Android\Sdk\system-images\android-34\default\x86_64\
+I0827 10:23:26.499137   18424 opengles.cpp:291] android_startOpenglesRenderer: gpu info
+I0827 10:23:26.499155   18424 opengles.cpp:292] GPU #1
+  Make: 10de
+  Model: NVIDIA GeForce GTX 1060 3GB
+  Device ID: 1c02
+
+INFO         | IPv4 server found: 28.0.0.2
+INFO         | Ignore IPv6 address: 2818:6abe:e801:0:9:6abe:e801:0
+INFO         | Ignore IPv6 address: 2818:6abe:e801:0:9:6abe:e801:0
+INFO         | Ignore IPv6 address: 2818:6abe:e801:0:9:6abe:e801:0
+INFO         | Guest GLES Driver: Auto (ext controls)
+library_mode host gpu mode host
+INFO         | emuglConfig_get_vulkan_hardware_gpu_support_info: Found physical GPU 'NVIDIA GeForce GTX 1060 3GB', type: VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, apiVersion: 1.3.280, driverVersion: 560.94
+
+INFO         | Enabled VulkanAllocateHostMemory feature for gpu vendor NVIDIA GeForce GTX 1060 3GB on Linux
+
+INFO         | GPU device local memory = 3179MB
+INFO         | Checking system compatibility:
+INFO         |   Checking: hasCompatibleHypervisor
+INFO         |      Ok: Hypervisor compatibility to run avd: `dev34_default_x86_64_Television__1080p_` are met
+INFO         |   Checking: hasSufficientSystem
+INFO         |      Ok: System requirements to run avd: `dev34_default_x86_64_Television__1080p_` are met
+INFO         |   Checking: hasSufficientHwGpu
+INFO         |      Ok: Hardware GPU requirements to run avd: `dev34_default_x86_64_Television__1080p_` are passed
+INFO         |   Checking: hasSufficientDiskSpace
+INFO         |      Ok: Disk space requirements to run avd: `dev34_default_x86_64_Television__1080p_` are met
+INFO         | Storing crashdata in: C:\Users\caojian\AppData\Local\Temp\\AndroidEmulator\emu-crash-36.1.9.db, detection is enabled for process: 27552
+INFO         | Initializing hardware OpenGLES emulation support
+INFO         | HealthMonitor disabled.
+INFO         | SharedLibrary::open for [vulkan-1.dll]
+INFO         | SharedLibrary::open for [vulkan-1.dll]: not found in map, open for the first time
+INFO         | SharedLibrary::open for [vulkan-1.dll] (win32): call LoadLibrary
+INFO         | SharedLibrary::open succeeded for [vulkan-1.dll]. File name: [C:\Windows\SYSTEM32\vulkan-1.dll]
+INFO         | Added library: vulkan-1.dll
+INFO         | Selecting Vulkan device: NVIDIA GeForce GTX 1060 3GB, Version: 1.3.280
+INFO         | Disabling sparse binding feature support
+INFO         | SharedLibrary::open for [opengl32.dll]: not found in map, open for the first time
+INFO         | SharedLibrary::open for [opengl32.dll] (win32): call LoadLibrary
+INFO         | SharedLibrary::open succeeded for [opengl32.dll]. File name: [C:\Windows\SYSTEM32\opengl32.dll]
+INFO         | SharedLibrary::open for [libshadertranslator.dll]: not found in map, open for the first time
+INFO         | SharedLibrary::open for [libshadertranslator.dll] (win32): call LoadLibrary
+INFO         | SharedLibrary::open succeeded for [libshadertranslator.dll]. File name: [D:\Android\Sdk\emulator\lib64\libshadertranslator.dll]
+INFO         | Initializing VkEmulation features:
+INFO         |     glInteropSupported: true
+INFO         |     useDeferredCommands: true
+INFO         |     createResourceWithRequirements: true
+INFO         |     useVulkanComposition: false
+INFO         |     useVulkanNativeSwapchain: false
+INFO         |     enable guestRenderDoc: false
+INFO         |     ASTC LDR emulation mode: Gpu
+INFO         |     enable ETC2 emulation: true
+INFO         |     enable Ycbcr emulation: false
+INFO         |     guestVulkanOnly: false
+INFO         |     useDedicatedAllocations: false
+INFO         | Graphics Adapter Vendor Google (NVIDIA Corporation)
+INFO         | Graphics Adapter Android Emulator OpenGL ES Translator (NVIDIA GeForce GTX 1060 3GB/PCIe/SSE2)
+INFO         | Graphics API Version OpenGL ES 3.0 (4.5.0 NVIDIA 560.94)
+I0827 10:23:26.815743   18424 userspace-boot-properties.cpp:766] Userspace boot properties:
+I0827 10:23:26.815759   18424 userspace-boot-properties.cpp:770]   androidboot.boot_devices=pci0000:00/0000:00:03.0 pci0000:00/0000:00:06.0
+I0827 10:23:26.815765   18424 userspace-boot-properties.cpp:770]   androidboot.dalvik.vm.heapsize=512m
+I0827 10:23:26.815770   18424 userspace-boot-properties.cpp:770]   androidboot.debug.hwui.renderer=skiagl
+I0827 10:23:26.815773   18424 userspace-boot-properties.cpp:770]   androidboot.debug.sf.nobootanimation=1
+I0827 10:23:26.815777   18424 userspace-boot-properties.cpp:770]   androidboot.hardware=ranchu
+I0827 10:23:26.815781   18424 userspace-boot-properties.cpp:770]   androidboot.hardware.gltransport=pipe
+I0827 10:23:26.815784   18424 userspace-boot-properties.cpp:770]   androidboot.hardware.vulkan=ranchu
+I0827 10:23:26.815787   18424 userspace-boot-properties.cpp:770]   androidboot.logcat=*:V
+I0827 10:23:26.815790   18424 userspace-boot-properties.cpp:770]   androidboot.opengles.version=196609
+I0827 10:23:26.815794   18424 userspace-boot-properties.cpp:770]   androidboot.qemu=1
+I0827 10:23:26.815798   18424 userspace-boot-properties.cpp:770]   androidboot.qemu.adb.pubkey=QAAAAFeSxj2Zhm/Q3ngTZ8vMVaCgvbesrbnV1E5iIEsRe5YgCLfiCr0/2MMbNI3OxCjUXM/Qab/VkyTnrnYAoh1Xp/NruAYSj1ChV2rlJxgxUdB7mVPWjiqgjsjs4bwa7YbiZ3VLSHuXVhEscLxjJseocfhitfFrKC4UXqIbbOkhuF4sRSIUuqTZa+Ji+2sDKXga3beoEZB+JdlijGFxLzL7VfEJtnt6ykwJ3w2EJPhGtxYcd0BW4YYxTnpT2u3sTjyAlGJ/wy4/oT/aBKaWFA28STAM+sVPn1vKAyEq6pGqf1qOUDkBh6hY71gASSVAL45CF9C2zkz7YxJymYOlJMmfabs5OrvH29RIWb/8JB++a+i3BbXX8DNb4a5ReEWa6sVRU4djJRO4YBUAEm5To2HJvXOi4QayBd87Q8D0c/gGdDt9rxa3mvHKKEc654KLKKJ99mVAQw6cLvmVo8S97NR671wqSEVsX3pIZw/13VIdDvwzla0Oi6v1aJm/wrxG6LffHAqJoicJE9neTvzmzqO9j45Ytnvb2p9o8qydQ+6P8y+Zc45xJYMQQAnCMxbK7XWZoxNEbbbu/LkhFTUozegNvSqkqu899DyzbtHWJ4smwufJYTgshXCLTsEZXyLt+hxGmVFhg3Lzg2aqexJL7KN8A0PO82IOtpS+2QX00ArTpOTLvuGgnAEAAQA= @unknown
+I0827 10:23:26.815811   18424 userspace-boot-properties.cpp:770]   androidboot.qemu.avd_name=dev34_default_x86_64_Television__1080p_
+I0827 10:23:26.815815   18424 userspace-boot-properties.cpp:770]   androidboot.qemu.camera_hq_edge_processing=0
+I0827 10:23:26.815819   18424 userspace-boot-properties.cpp:770]   androidboot.qemu.camera_protocol_ver=1
+I0827 10:23:26.815823   18424 userspace-boot-properties.cpp:770]   androidboot.qemu.cpuvulkan.version=4202496
+I0827 10:23:26.815826   18424 userspace-boot-properties.cpp:770]   androidboot.qemu.gltransport.drawFlushInterval=800
+I0827 10:23:26.815842   18424 userspace-boot-properties.cpp:770]   androidboot.qemu.gltransport.name=pipe
+I0827 10:23:26.815846   18424 userspace-boot-properties.cpp:770]   androidboot.qemu.hwcodec.avcdec=2
+I0827 10:23:26.815849   18424 userspace-boot-properties.cpp:770]   androidboot.qemu.hwcodec.hevcdec=2
+I0827 10:23:26.815854   18424 userspace-boot-properties.cpp:770]   androidboot.qemu.hwcodec.vpxdec=2
+I0827 10:23:26.815858   18424 userspace-boot-properties.cpp:770]   androidboot.qemu.settings.system.screen_off_timeout=2147483647
+I0827 10:23:26.815862   18424 userspace-boot-properties.cpp:770]   androidboot.qemu.virtiowifi=1
+I0827 10:23:26.815865   18424 userspace-boot-properties.cpp:770]   androidboot.qemu.vsync=60
+I0827 10:23:26.815868   18424 userspace-boot-properties.cpp:770]   androidboot.serialno=EMULATOR36X1X9X0
+I0827 10:23:26.815871   18424 userspace-boot-properties.cpp:770]   androidboot.vbmeta.digest=8bee4f6105b6acd7de887b1ee6629ab07066df02ee9bbca07663adffdad97fc1
+I0827 10:23:26.815875   18424 userspace-boot-properties.cpp:770]   androidboot.vbmeta.hash_alg=sha256
+I0827 10:23:26.815878   18424 userspace-boot-properties.cpp:770]   androidboot.vbmeta.size=6656
+I0827 10:23:26.815881   18424 userspace-boot-properties.cpp:770]   androidboot.veritymode=enforcing
+INFO         | Graphics API Extensions GL_OES_EGL_sync GL_OES_EGL_image GL_OES_EGL_image_external GL_OES_depth24 GL_OES_depth32 GL_OES_element_index_uint GL_OES_texture_float GL_OES_texture_float_linear GL_OES_compressed_paletted_texture GL_OES_compressed_ETC1_RGB8_texture GL_OES_depth_texture GL_OES_texture_half_float GL_OES_texture_half_float_linear GL_OES_packed_depth_stencil GL_OES_vertex_half_float GL_OES_texture_npot GL_OES_rgb8_rgba8 GL_OVR_multiview2 GL_EXT_multiview_texture_multisample GL_EXT_color_buffer_float GL_EXT_color_buffer_half_float GL_EXT_texture_format_BGRA8888 GL_APPLE_texture_format_BGRA8888 GL_EXT_texture_buffer 
+INFO         | Graphics Device Extensions N/A
+INFO         | Sending adb public key [QAAAAFeSxj2Zhm/Q3ngTZ8vMVaCgvbesrbnV1E5iIEsRe5YgCLfiCr0/2MMbNI3OxCjUXM/Qab/VkyTnrnYAoh1Xp/NruAYSj1ChV2rlJxgxUdB7mVPWjiqgjsjs4bwa7YbiZ3VLSHuXVhEscLxjJseocfhitfFrKC4UXqIbbOkhuF4sRSIUuqTZa+Ji+2sDKXga3beoEZB+JdlijGFxLzL7VfEJtnt6ykwJ3w2EJPhGtxYcd0BW4YYxTnpT2u3sTjyAlGJ/wy4/oT/aBKaWFA28STAM+sVPn1vKAyEq6pGqf1qOUDkBh6hY71gASSVAL45CF9C2zkz7YxJymYOlJMmfabs5OrvH29RIWb/8JB++a+i3BbXX8DNb4a5ReEWa6sVRU4djJRO4YBUAEm5To2HJvXOi4QayBd87Q8D0c/gGdDt9rxa3mvHKKEc654KLKKJ99mVAQw6cLvmVo8S97NR671wqSEVsX3pIZw/13VIdDvwzla0Oi6v1aJm/wrxG6LffHAqJoicJE9neTvzmzqO9j45Ytnvb2p9o8qydQ+6P8y+Zc45xJYMQQAnCMxbK7XWZoxNEbbbu/LkhFTUozegNvSqkqu899DyzbtHWJ4smwufJYTgshXCLTsEZXyLt+hxGmVFhg3Lzg2aqexJL7KN8A0PO82IOtpS+2QX00ArTpOTLvuGgnAEAAQA= @unknown]
+AEHD is operational
+host doesn't support requested feature: CPUID.01H:ECX.xsave [bit 26]
+host doesn't support requested feature: CPUID.01H:ECX.avx [bit 28]
+host doesn't support requested feature: CPUID.01H:ECX.xsave [bit 26]
+host doesn't support requested feature: CPUID.01H:ECX.avx [bit 28]
+INFO         | Monitoring duration of emulator setup.
+WARNING      | The emulator now requires a signed jwt token for gRPC access! Use the -grpc flag if you really want an open unprotected grpc port
+INFO         | Using security allow list from: D:\Android\Sdk\emulator\lib\emulator_access.json
+WARNING      | *** Basic token auth should only be used by android-studio ***
+INFO         | The active JSON Web Key Sets can be found here: C:\Users\caojian\AppData\Local\Temp\avd\running\27552\jwks\cec8ef11-7068-4e48-83d6-f1d427e94d7a\active.jwk
+INFO         | Scanning C:\Users\caojian\AppData\Local\Temp\avd\running\27552\jwks\cec8ef11-7068-4e48-83d6-f1d427e94d7a for jwk keys.
+INFO         | Started GRPC server at 127.0.0.1:8556, security: Local, auth: +token
+INFO         | Advertising in: C:\Users\caojian\AppData\Local\Temp\avd\running\pid_27552.ini
+INFO         | Setting display: 0 configuration to: 1920x1080, dpi: 320x320 
+INFO         | setDisplayActiveConfig 0
+INFO         | Activated packet streamer for bluetooth emulation
+INFO         | Loading snapshot 'default_boot'...
+WARNING      | Client not connected yet. Ignoring message!
+WARNING      | Client not connected yet. Ignoring message!
+WARNING      | Client not connected yet. Ignoring message!
+WARNING      | Unknown XR viewport mode requested: 0, ignored.
+
+WARNING      | Client not connected yet. Ignoring message!
+WARNING      | Client not connected yet. Ignoring message!
+WARNING      | Client not connected yet. Ignoring message!
+WARNING      | Client not connected yet. Ignoring message!
+WARNING      | Client not connected yet. Ignoring message!
+INFO         | Successfully loaded snapshot 'default_boot' using 711 ms
+INFO         | IPv4 server found: 28.0.0.2
+INFO         | Ignore IPv6 address: 381f:a879:e901:0:1010:a879:e901:0
+INFO         | Ignore IPv6 address: 381f:a879:e901:0:1010:a879:e901:0
+INFO         | Ignore IPv6 address: 381f:a879:e901:0:1010:a879:e901:0
+INFO         | IPv4 server found: 28.0.0.2
+INFO         | Ignore IPv6 address: 381f:a879:e901:0:1010:a879:e901:0
+INFO         | Ignore IPv6 address: 381f:a879:e901:0:1010:a879:e901:0
+INFO         | Ignore IPv6 address: 381f:a879:e901:0:1010:a879:e901:0
+INFO         | IPv4 server found: 28.0.0.2
+INFO         | Ignore IPv6 address: 381f:a879:e901:0:1010:a879:e901:0
+INFO         | Ignore IPv6 address: 381f:a879:e901:0:1010:a879:e901:0
+INFO         | Ignore IPv6 address: 381f:a879:e901:0:1010:a879:e901:0
