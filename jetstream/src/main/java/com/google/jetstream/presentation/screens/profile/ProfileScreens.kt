@@ -17,9 +17,12 @@
 package com.google.jetstream.presentation.screens.profile
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.Support
 import androidx.compose.material.icons.filled.Translate
@@ -34,7 +37,8 @@ enum class ProfileScreens(
     Subtitles(Icons.Default.Subtitles),
     Language(Icons.Default.Translate),
     SearchHistory(title = "Search history", icon = Icons.Default.Search),
-    HelpAndSupport(title = "Help and Support", icon = Icons.Default.Support);
+    HelpAndSupport(title = "Help and Support", icon = Icons.Default.Support),
+    WebDavBrowser(title = "资源目录", icon = Icons.Default.Folder);
 
     operator fun invoke() = name
 

@@ -205,6 +205,9 @@ fun ProfileScreen(
                 composable(ProfileScreens.HelpAndSupport()) {
                     HelpAndSupportSection()
                 }
+                composable(ProfileScreens.WebDavBrowser()) {
+                    WebDavBrowserSection()
+                }
             }
         )
     }

@@ -14,21 +14,18 @@
  * limitations under the License.
  */
 
-pluginManagement {
-    repositories {
-        gradlePluginPortal()
-        google()
-        mavenCentral()
-    }
-}
-dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-    repositories {
-        google()
-        mavenCentral()
-        maven { url = uri("https://jitpack.io") }
-    }
-}
-rootProject.name = "JetStream"
-include(":jetstream")
-include(":benchmark")
+package com.google.jetstream.data.database.entities
+
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+
+@Entity(tableName = "resource_directories")
+data class ResourceDirectoryEntity(
+    @PrimaryKey
+    val id: String,
+    val name: String,
+    val path: String,
+    val webDavConfigId: String,
+    val serverName: String,
+    val createdAt: Long = System.currentTimeMillis()
+)

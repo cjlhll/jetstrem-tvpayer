@@ -14,21 +14,19 @@
  * limitations under the License.
  */
 
-pluginManagement {
-    repositories {
-        gradlePluginPortal()
-        google()
-        mavenCentral()
-    }
-}
-dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-    repositories {
-        google()
-        mavenCentral()
-        maven { url = uri("https://jitpack.io") }
-    }
-}
-rootProject.name = "JetStream"
-include(":jetstream")
-include(":benchmark")
+package com.google.jetstream.data.database.entities
+
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+
+@Entity(tableName = "webdav_configs")
+data class WebDavConfigEntity(
+    @PrimaryKey
+    val id: String,
+    val displayName: String,
+    val serverUrl: String,
+    val username: String,
+    val password: String,
+    val isConnected: Boolean = false,
+    val createdAt: Long = System.currentTimeMillis()
+)

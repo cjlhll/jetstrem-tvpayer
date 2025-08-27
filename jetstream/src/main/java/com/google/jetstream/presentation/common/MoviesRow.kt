@@ -271,7 +271,7 @@ private fun MoviesRowItem(
     ) {
         MoviesRowItemImage(
             modifier = Modifier
-                .width(120.dp)
+                .fillMaxWidth(0.3f)
                 .aspectRatio(itemDirection.aspectRatio),
             showIndexOverImage = showIndexOverImage,
             movie = movie,

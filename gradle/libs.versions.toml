@@ -21,6 +21,8 @@ navigation-compose = "2.8.8"
 profileinstaller = "1.4.1"
 uiautomator = "2.3.0"
 rules = "1.6.1"
+sardine-android = "0.9"
+room = "2.6.1"
 
 [libraries]
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity-compose" }
@@ -48,6 +50,10 @@ hilt-android = { module = "com.google.dagger:hilt-android", version.ref = "hilt-
 hilt-compiler = { module = "com.google.dagger:hilt-compiler", version.ref = "hilt-android" }
 kotlinx-serialization = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 androidx-rules = { group = "androidx.test", name = "rules", version.ref = "rules" }
+sardine-android = { module = "com.github.thegrizzlylabs:sardine-android", version.ref = "sardine-android" }
+androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
+androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+androidx-room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "android-gradle-plugin" }

@@ -14,21 +14,16 @@
  * limitations under the License.
  */
 
-pluginManagement {
-    repositories {
-        gradlePluginPortal()
-        google()
-        mavenCentral()
-    }
-}
-dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-    repositories {
-        google()
-        mavenCentral()
-        maven { url = uri("https://jitpack.io") }
-    }
-}
-rootProject.name = "JetStream"
-include(":jetstream")
-include(":benchmark")
+package com.google.jetstream.presentation.screens.profile
+
+import androidx.lifecycle.ViewModel
+import com.google.jetstream.data.repositories.WebDavRepository
+import com.google.jetstream.data.webdav.WebDavService
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
+
+@HiltViewModel
+class WebDavBrowserViewModel @Inject constructor(
+    val repository: WebDavRepository,
+    val webDavService: WebDavService
+) : ViewModel()

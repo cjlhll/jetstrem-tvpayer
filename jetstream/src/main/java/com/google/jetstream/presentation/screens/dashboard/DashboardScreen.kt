@@ -180,15 +180,16 @@ fun DashboardScreen(
                     bottom = ParentPadding.calculateBottomPadding()
                 ),
             selectedTabIndex = currentTopBarSelectedTabIndex,
-        ) { screen ->
-            val targetRoute = screen()
-            if (currentDestination != targetRoute) {
-                navController.navigate(targetRoute) {
-                    if (screen == TopBarTabs[0]) popUpTo(TopBarTabs[0].invoke())
-                    launchSingleTop = true
+            onScreenSelection = { screen ->
+                val targetRoute = screen()
+                if (currentDestination != targetRoute) {
+                    navController.navigate(targetRoute) {
+                        if (screen == TopBarTabs[0]) popUpTo(TopBarTabs[0].invoke())
+                        launchSingleTop = true
+                    }
                 }
             }
-        }
+        )
 
         Body(
             openCategoryMovieList = openCategoryMovieList,

@@ -85,6 +85,9 @@ dependencies {
     // Material components optimized for TV apps
     implementation(libs.androidx.tv.material)
 
+    // Material3 components for input fields
+    implementation("androidx.compose.material3:material3")
+
     // ViewModel in Compose
     implementation(libs.androidx.lifecycle.viewmodel.compose)
 
@@ -111,6 +114,14 @@ dependencies {
 
     // Baseline profile installer
     implementation(libs.androidx.profileinstaller)
+
+    // WebDAV client
+    implementation(libs.sardine.android)
+
+    // Room database
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
 
     // Compose Previews
     debugImplementation(libs.androidx.compose.ui.tooling)
