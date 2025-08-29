@@ -43,6 +43,7 @@ import com.google.jetstream.presentation.common.Loading
 import com.google.jetstream.presentation.common.MoviesRow
 import com.google.jetstream.presentation.screens.dashboard.rememberChildPadding
 import com.google.jetstream.presentation.screens.movies.MoviesScreenMovieList
+import com.google.jetstream.presentation.screens.home.ScrapedTvViewModel
 
 @Composable
 fun HomeScreen(
@@ -105,6 +106,10 @@ private fun Catalog(
 
     // WebDAV 刮削的电影（用于替换热门趋势模块）
     val scrapedVm: ScrapedMoviesViewModel = hiltViewModel()
+    // WebDAV 刮削的电视剧（以目录为单位）
+    val scrapedTvVm: ScrapedTvViewModel = hiltViewModel()
+    val scrapedTv by scrapedTvVm.shows.collectAsStateWithLifecycle()
+
     val scraped by scrapedVm.movies.collectAsStateWithLifecycle()
 
     LaunchedEffect(shouldShowTopBar) {
@@ -141,7 +146,7 @@ private fun Catalog(
         item(contentType = "MoviesRow") {
             MoviesRow(
                 modifier = Modifier.padding(top = 16.dp),
-                movieList = nowPlayingMovies,
+                movieList = if (scrapedTv.isNotEmpty()) scrapedTv else nowPlayingMovies,
                 title = StringConstants.Composable.HomeScreenNowPlayingMoviesTitle,
                 showAllButton = true,
                 onMovieSelected = onMovieClick,

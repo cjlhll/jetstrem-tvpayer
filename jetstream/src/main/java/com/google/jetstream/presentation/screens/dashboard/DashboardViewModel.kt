@@ -24,6 +24,7 @@ import java.net.URL
 import javax.inject.Inject
 import com.google.jetstream.data.entities.Movie
 import com.google.jetstream.data.repositories.ScrapedMoviesStore
+import com.google.jetstream.data.repositories.ScrapedTvStore
 
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
@@ -31,12 +32,15 @@ class DashboardViewModel @Inject constructor(
     private val webDavConfigDao: WebDavConfigDao,
     private val webDavService: WebDavService,
     private val scrapedMoviesStore: ScrapedMoviesStore,
+    private val scrapedTvStore: ScrapedTvStore,
 ) : ViewModel() {
 
     fun refreshAndScrape() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val aggregated = mutableListOf<Movie>()
+                val aggregatedTv = mutableListOf<Movie>()
+                val visited = mutableSetOf<String>()
                 val directories = resourceDirectoryDao.getAllDirectories().first()
                 for (dir in directories) {
                     val config: WebDavConfigEntity = webDavConfigDao.getConfigById(dir.webDavConfigId)
@@ -51,13 +55,19 @@ class DashboardViewModel @Inject constructor(
                             isEnabled = true
                         )
                     )
+
                     val startPath = dir.path
-                    Log.i(TAG, "开始扫描：${config.displayName} -> ${if (startPath.isEmpty()) "/" else startPath}")
-                    traverseAndScrape(startPath, aggregated)
+                    val startNorm = startPath.trim('/').replace(Regex("/+"), "/")
+                    Log.i(TAG, "开始扫描：${config.displayName} -> ${if (startNorm.isEmpty()) "/" else startNorm}")
+                    // 遍历收集电影与电视剧（去重递归）
+                    traverseAndScrape(startNorm, aggregated, aggregatedTv, visited)
                 }
-                // 更新首页 Movies 模块数据源
-                scrapedMoviesStore.setMovies(aggregated)
-                Log.i(TAG, "扫描完成")
+                // 去重并更新首页 Movies/TV 模块数据源（避免重复 key 导致 LazyRow 报错）
+                val moviesDistinct = aggregated.distinctBy { it.id }
+                val tvDistinct = aggregatedTv.distinctBy { it.id }
+                scrapedMoviesStore.setMovies(moviesDistinct)
+                scrapedTvStore.setShows(tvDistinct)
+                Log.i(TAG, "扫描完成：电影=${moviesDistinct.size}，电视剧=${tvDistinct.size}")
             } catch (ce: CancellationException) {
                 throw ce
             } catch (e: Exception) {
@@ -66,45 +76,66 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
-    private suspend fun traverseAndScrape(path: String, aggregated: MutableList<Movie>) {
+    private suspend fun traverseAndScrape(path: String, aggregatedMovies: MutableList<Movie>, aggregatedTv: MutableList<Movie>, visited: MutableSet<String>) {
+        val norm = path.trim('/').replace(Regex("/+"), "/")
+        if (!visited.add(norm)) return
         when (val res = webDavService.listDirectory(path)) {
             is WebDavResult.Success -> {
                 val items = res.data.filter { it.name.isNotBlank() }
                 val files = items.filter { !it.isDirectory }
                 val folders = items.filter { it.isDirectory }
 
-                // 判断该目录是否像剧集目录（包含多个集）。目录名若包含“电影”，强制当电影目录处理
                 val fileNames = files.map { it.name }
-                val looksLikeTv = !path.contains("电影") && looksLikeTvSeries(fileNames)
+                val looksLikeTv = looksLikeTvSeries(fileNames)
 
-                // 文件刮削
-                for (file in files) {
-                    val isEp = isEpisodeFile(file.name)
-                    val rawName = stripExtension(file.name)
-                    val cleaned = extractTitleFromName(rawName)
-                    val candidates = buildCandidates(cleaned)
-                    val year = extractYear(rawName)
-                    val english = isEnglishTitle(rawName)
-
-                    if (isEp || looksLikeTv) {
-                        for (q in candidates) {
-                            val extras = mutableMapOf<String, String>()
-                            if (year != null) extras["first_air_date_year"] = year
-                            if (english) extras["region"] = "US"
-                            val res = TmdbApi.search("/3/search/tv", q, extras)
-                            if (res?.results?.firstOrNull() != null) break
-                        }
-                    } else {
+                if (looksLikeTv && files.isNotEmpty()) {
+                    // 该目录看起来是剧集，使用目录名作为剧名刮削一次，加入 aggregatedTv
+                    val folderTitleRaw = currentDirName(path)
+                    val cleanedFolderTitle = extractTitleFromName(folderTitleRaw)
+                    val folderCandidates = buildCandidates(cleanedFolderTitle)
+                    val folderYear = extractYear(folderTitleRaw)
+                    val english = isEnglishTitle(folderTitleRaw)
+                    var matched: TmdbApi.SearchItem? = null
+                    for (q in folderCandidates) {
+                        val extras = mutableMapOf<String, String>()
+                        if (folderYear != null) extras["first_air_date_year"] = folderYear
+                        if (english) extras["region"] = "US"
+                        val r = TmdbApi.search("/3/search/tv", q, extras)
+                        matched = r?.results?.firstOrNull()
+                        if (matched != null) break
+                    }
+                    matched?.let { m ->
+                        val poster = m.posterPathOrNull()?.let { "https://image.tmdb.org/t/p/w500$it" } ?: ""
+                        aggregatedTv.add(
+                            Movie(
+                                id = m.id.toString(),
+                                videoUri = "",
+                                subtitleUri = null,
+                                posterUri = poster,
+                                name = m.name ?: m.title ?: cleanedFolderTitle,
+                                description = m.overview ?: ""
+                            )
+                        )
+                        Log.i(TAG, "剧集目录匹配: $folderTitleRaw -> ${m.name ?: m.title} (${m.id})")
+                    }
+                } else {
+                    // 文件逐个尝试电影匹配
+                    for (file in files) {
+                        val rawName = stripExtension(file.name)
+                        val cleaned = extractTitleFromName(rawName)
+                        val candidates = buildCandidates(cleaned)
+                        val year = extractYear(rawName)
+                        val english = isEnglishTitle(rawName)
                         var matched: TmdbApi.SearchItem? = null
                         for (q in candidates) {
                             val extras = mutableMapOf("include_adult" to "false")
                             if (year != null) extras["year"] = year
                             if (english) extras["region"] = "US"
-                            val res = TmdbApi.search("/3/search/movie", q, extras)
-                            matched = res?.results?.firstOrNull()
+                            val r = TmdbApi.search("/3/search/movie", q, extras)
+                            matched = r?.results?.firstOrNull()
                             if (matched != null) {
                                 val poster = matched.posterPathOrNull()?.let { "https://image.tmdb.org/t/p/w500$it" } ?: ""
-                                aggregated.add(
+                                aggregatedMovies.add(
                                     Movie(
                                         id = matched.id.toString(),
                                         videoUri = "",
@@ -121,13 +152,14 @@ class DashboardViewModel @Inject constructor(
                     }
                 }
 
-                // 递归：如果当前目录名是“电影”，则不再深入“电影/电影”这种重复层级
+                // 递归深入（过滤当前目录自身，避免 .../电视剧/电视剧 或 .../凡人修仙传/凡人修仙传）
+                val currName = currentDirName(path)
                 for (dir in folders) {
-                    val dirName = dir.name.removeSuffix("/")
-                    val next = if (path.isBlank()) dirName else "$path/$dirName"
-                    if (!(path.contains("电影") && dirName == "电影")) {
-                        traverseAndScrape(next, aggregated)
-                    }
+                    // DavResource.name 可能是全路径或带尾斜杠，这里只取末段作为子目录名
+                    val childName = dir.name.substringAfterLast('/').removeSuffix("/")
+                    if (childName.isBlank() || childName == currName) continue // 过滤当前目录自身
+                    val next = (if (path.isBlank()) childName else "$path/$childName").trim('/').replace(Regex("/+"), "/")
+                    traverseAndScrape(next, aggregatedMovies, aggregatedTv, visited)
                 }
             }
             is WebDavResult.Error -> Log.w(TAG, "列目录失败(${path}): ${res.message}")
@@ -153,10 +185,12 @@ class DashboardViewModel @Inject constructor(
 
     private fun isEpisodeFile(name: String): Boolean {
         val n = name.lowercase()
-        val sxe = Regex("s[0-9]{1,2}e[0-9]{1,2}")
-        // 仅识别文件名开头的 1-2 位数字（常用 01/02 集），避免把年份识别为集数
-        val leadingNum = Regex("^(?:[ _.-])?([0-2]?\\d)(?:[ _.-])")
-        return sxe.containsMatchIn(n) || leadingNum.containsMatchIn(n)
+        val sxe = Regex("(?i)s\\d{1,2}[ _.-]?e\\d{1,2}")
+        // 识别常见的集数样式：前导 01/02/001、中文“第01集/第1集/第001集”、以及 E01/E1、EP01/EP1
+        val leadingNum = Regex("^\\s*([0-9]{1,3})[ _.\\-]")
+        val cnEpisode = Regex("第\\s*([0-9]{1,3})\\s*集")
+        val eNum = Regex("(?i)\\b(e|ep)\\s*([0-9]{1,3})\\b")
+        return sxe.containsMatchIn(n) || leadingNum.containsMatchIn(n) || cnEpisode.containsMatchIn(n) || eNum.containsMatchIn(n)
     }
 
     private fun extractYear(raw: String): String? {
