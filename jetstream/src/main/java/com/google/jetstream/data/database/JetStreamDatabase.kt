@@ -48,7 +48,8 @@ abstract class JetStreamDatabase : RoomDatabase() {
                     context.applicationContext,
                     JetStreamDatabase::class.java,
                     "jetstream_database"
-                ).build()
+                ).fallbackToDestructiveMigration()
+                .build()
                 INSTANCE = instance
                 instance
             }
