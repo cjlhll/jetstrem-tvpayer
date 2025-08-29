@@ -137,6 +137,9 @@ private fun WatchTrailerButton(
         )
         Spacer(Modifier.size(8.dp))
         Text(
+                // 将“观看预告片”文案临时改为“观看”，并通过上层传入 goToMoviePlayer(id) 跳转
+                // 注：视频播放使用 VideoPlayerScreen，播放地址在其 ViewModel 中按 id 加载
+
             text = stringResource(R.string.watch_trailer),
             style = MaterialTheme.typography.titleSmall
         )

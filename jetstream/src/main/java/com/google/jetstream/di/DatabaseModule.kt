@@ -46,4 +46,9 @@ object DatabaseModule {
     fun provideResourceDirectoryDao(database: JetStreamDatabase): ResourceDirectoryDao {
         return database.resourceDirectoryDao()
     }
+
+    @Provides
+    fun provideScrapedItemDao(database: JetStreamDatabase): com.google.jetstream.data.database.dao.ScrapedItemDao {
+        return database.scrapedItemDao()
+    }
 }

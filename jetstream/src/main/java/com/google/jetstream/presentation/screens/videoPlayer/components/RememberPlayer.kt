@@ -23,17 +23,25 @@ import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
-fun rememberPlayer(context: Context) = remember {
+fun rememberPlayer(context: Context, headers: Map<String, String> = emptyMap()) = remember {
+    val httpFactory = DefaultHttpDataSource.Factory()
+        .setAllowCrossProtocolRedirects(true)
+        .apply {
+            if (headers.isNotEmpty()) setDefaultRequestProperties(headers)
+        }
+    val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
+
     ExoPlayer.Builder(context)
         .setSeekForwardIncrementMs(10)
         .setSeekBackIncrementMs(10)
         .setMediaSourceFactory(
-            ProgressiveMediaSource.Factory(DefaultDataSource.Factory(context))
+            ProgressiveMediaSource.Factory(dataSourceFactory)
         )
         .setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING)
         .build()

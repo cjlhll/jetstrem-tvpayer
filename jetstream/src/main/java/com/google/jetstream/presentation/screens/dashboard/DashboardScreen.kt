@@ -31,6 +31,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -95,6 +96,7 @@ fun DashboardScreen(
     val focusManager = LocalFocusManager.current
     val navController = rememberNavController()
     val dashboardViewModel: DashboardViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+    val isRefreshing by dashboardViewModel.isRefreshing.collectAsState(initial = false)
 
     var isTopBarVisible by remember { mutableStateOf(true) }
     var isTopBarFocused by remember { mutableStateOf(false) }
@@ -191,7 +193,8 @@ fun DashboardScreen(
                 }
             },
             onRefreshClick = { dashboardViewModel.refreshAndScrape() },
-            showRefresh = (currentDestination == Screens.Home())
+            showRefresh = (currentDestination == Screens.Home()),
+            isRefreshing = isRefreshing
         )
 
         Body(

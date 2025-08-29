@@ -24,7 +24,9 @@ data class Movie(
     val subtitleUri: String?,
     val posterUri: String,
     val name: String,
-    val description: String
+    val description: String,
+    val releaseDate: String? = null,
+    val rating: Float? = null,
 )
 
 fun MoviesResponseItem.toMovie(thumbnailType: ThumbnailType = ThumbnailType.Standard): Movie {

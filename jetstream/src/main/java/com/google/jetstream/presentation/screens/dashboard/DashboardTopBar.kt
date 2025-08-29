@@ -29,6 +29,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Refresh
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.draw.rotate
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -80,7 +87,8 @@ fun DashboardTopBar(
     focusRequesters: List<FocusRequester> = remember { TopBarFocusRequesters },
     onScreenSelection: (screen: Screens) -> Unit,
     onRefreshClick: () -> Unit = {},
-    showRefresh: Boolean = false
+    showRefresh: Boolean = false,
+    isRefreshing: Boolean = false
 ) {
     val focusManager = LocalFocusManager.current
     Box(modifier = modifier) {
@@ -107,13 +115,24 @@ fun DashboardTopBar(
             )
             if (showRefresh) {
                 Spacer(modifier = Modifier.width(12.dp))
+                val infiniteTransition = rememberInfiniteTransition(label = "refresh")
+                val angle by infiniteTransition.animateFloat(
+                    initialValue = 0f,
+                    targetValue = 360f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(durationMillis = 800, easing = LinearEasing),
+                        repeatMode = RepeatMode.Restart
+                    ),
+                    label = "angle"
+                )
                 androidx.tv.material3.Button(onClick = onRefreshClick) {
                     androidx.tv.material3.Icon(
                         imageVector = androidx.compose.material.icons.Icons.Default.Refresh,
-                        contentDescription = "刷新"
+                        contentDescription = "刷新",
+                        modifier = if (isRefreshing) Modifier.rotate(angle) else Modifier
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    androidx.tv.material3.Text(text = "刷新")
+                    androidx.tv.material3.Text(text = if (isRefreshing) "刷新中..." else "刷新")
                 }
             }
             Row(

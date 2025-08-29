@@ -20,6 +20,8 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
+import com.google.jetstream.data.webdav.WebDavService
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -85,7 +87,8 @@ fun VideoPlayerScreen(
         is VideoPlayerScreenUiState.Done -> {
             VideoPlayerScreenContent(
                 movieDetails = s.movieDetails,
-                onBackPressed = onBackPressed
+                onBackPressed = onBackPressed,
+                headers = videoPlayerScreenViewModel.headers
             )
         }
     }
@@ -93,14 +96,15 @@ fun VideoPlayerScreen(
 
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
-fun VideoPlayerScreenContent(movieDetails: MovieDetails, onBackPressed: () -> Unit) {
+fun VideoPlayerScreenContent(movieDetails: MovieDetails, onBackPressed: () -> Unit, headers: Map<String, String>) {
     val context = LocalContext.current
-    val exoPlayer = rememberPlayer(context)
+    val exoPlayer = rememberPlayer(context, headers)
 
     val videoPlayerState = rememberVideoPlayerState(
         hideSeconds = 4,
     )
 
+        android.util.Log.i("VideoPlayer", "准备播放 URL: ${movieDetails.videoUri}")
     LaunchedEffect(exoPlayer, movieDetails) {
         exoPlayer.addMediaItem(movieDetails.intoMediaItem())
         movieDetails.similarMovies.forEach {

@@ -21,6 +21,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.jetstream.data.entities.MovieDetails
 import com.google.jetstream.data.repositories.MovieRepository
+import com.google.jetstream.data.repositories.ScrapedMoviesStore
+import com.google.jetstream.data.repositories.ScrapedTvStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
@@ -31,6 +33,8 @@ import kotlinx.coroutines.flow.stateIn
 class MovieDetailsScreenViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     repository: MovieRepository,
+    scrapedMoviesStore: ScrapedMoviesStore,
+    scrapedTvStore: ScrapedTvStore,
 ) : ViewModel() {
     val uiState = savedStateHandle
         .getStateFlow<String?>(MovieDetailsScreen.MovieIdBundleKey, null)
@@ -39,7 +43,10 @@ class MovieDetailsScreenViewModel @Inject constructor(
                 MovieDetailsScreenUiState.Error
             } else {
                 val details = repository.getMovieDetails(movieId = id)
-                MovieDetailsScreenUiState.Done(movieDetails = details)
+                val titleFromStores = scrapedMoviesStore.movies.value.firstOrNull { it.id == id }?.name
+                    ?: scrapedTvStore.shows.value.firstOrNull { it.id == id }?.name
+                val fixed = if (titleFromStores != null) details.copy(name = titleFromStores) else details
+                MovieDetailsScreenUiState.Done(movieDetails = fixed)
             }
         }.stateIn(
             scope = viewModelScope,

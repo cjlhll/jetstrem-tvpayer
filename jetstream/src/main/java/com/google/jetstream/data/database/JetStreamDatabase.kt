@@ -22,21 +22,25 @@ import androidx.room.RoomDatabase
 import android.content.Context
 import com.google.jetstream.data.database.dao.ResourceDirectoryDao
 import com.google.jetstream.data.database.dao.WebDavConfigDao
+import com.google.jetstream.data.database.dao.ScrapedItemDao
 import com.google.jetstream.data.database.entities.ResourceDirectoryEntity
 import com.google.jetstream.data.database.entities.WebDavConfigEntity
+import com.google.jetstream.data.database.entities.ScrapedItemEntity
 
 @Database(
     entities = [
         WebDavConfigEntity::class,
-        ResourceDirectoryEntity::class
+        ResourceDirectoryEntity::class,
+        ScrapedItemEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class JetStreamDatabase : RoomDatabase() {
     
     abstract fun webDavConfigDao(): WebDavConfigDao
     abstract fun resourceDirectoryDao(): ResourceDirectoryDao
+    abstract fun scrapedItemDao(): ScrapedItemDao
     
     companion object {
         @Volatile

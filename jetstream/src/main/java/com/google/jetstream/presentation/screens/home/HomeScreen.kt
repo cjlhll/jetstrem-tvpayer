@@ -137,8 +137,8 @@ private fun Catalog(
             MoviesRow(
                 modifier = Modifier.padding(top = 16.dp),
                 movieList = if (scraped.isNotEmpty()) scraped else trendingMovies,
-                title = if (scraped.isNotEmpty()) "Movies (WebDAV)" else StringConstants.Composable.HomeScreenTrendingTitle,
-                showAllButton = scraped.isEmpty(),
+                title = "电影",
+                showAllButton = true,
                 onMovieSelected = onMovieClick,
                 onShowAllClick = { onShowAllClick("movies") }
             )

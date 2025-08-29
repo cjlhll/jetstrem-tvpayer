@@ -5,7 +5,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.jetstream.data.database.dao.ResourceDirectoryDao
 import com.google.jetstream.data.database.dao.WebDavConfigDao
+import com.google.jetstream.data.database.dao.ScrapedItemDao
 import com.google.jetstream.data.database.entities.WebDavConfigEntity
+import com.google.jetstream.data.database.entities.ScrapedItemEntity
 import com.google.jetstream.data.webdav.WebDavResult
 import com.google.jetstream.data.webdav.WebDavService
 import com.thegrizzlylabs.sardineandroid.DavResource
@@ -33,9 +35,57 @@ class DashboardViewModel @Inject constructor(
     private val webDavService: WebDavService,
     private val scrapedMoviesStore: ScrapedMoviesStore,
     private val scrapedTvStore: ScrapedTvStore,
+    private val scrapedItemDao: ScrapedItemDao,
 ) : ViewModel() {
 
+    private val _isRefreshing = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val isRefreshing: kotlinx.coroutines.flow.StateFlow<Boolean> = _isRefreshing
+
+    init {
+
+        // 启动时优先从数据库加载已刮削的数据
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                scrapedItemDao.getAllByType("movie").collect { list ->
+                    val movies = list.map {
+                        Movie(
+                            id = it.id,
+                            videoUri = "",
+                            subtitleUri = null,
+                            posterUri = it.posterUri,
+                            name = it.title,
+                            description = it.description,
+                            releaseDate = it.releaseDate,
+                            rating = it.rating,
+                        )
+                    }
+                    scrapedMoviesStore.setMovies(movies)
+                }
+            } catch (_: Exception) {}
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                scrapedItemDao.getAllByType("tv").collect { list ->
+                    val tv = list.map {
+                        Movie(
+                            id = it.id,
+                            videoUri = "",
+                            subtitleUri = null,
+                            posterUri = it.posterUri,
+                            name = it.title,
+                            description = it.description,
+                            releaseDate = it.releaseDate,
+                            rating = it.rating,
+                        )
+                    }
+                    scrapedTvStore.setShows(tv)
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
     fun refreshAndScrape() {
+        _isRefreshing.value = true
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val aggregated = mutableListOf<Movie>()
@@ -62,16 +112,44 @@ class DashboardViewModel @Inject constructor(
                     // 遍历收集电影与电视剧（去重递归）
                     traverseAndScrape(startNorm, aggregated, aggregatedTv, visited)
                 }
-                // 去重并更新首页 Movies/TV 模块数据源（避免重复 key 导致 LazyRow 报错）
+                // 去重并更新首页 Movies/TV 模块数据源，并持久化到数据库
                 val moviesDistinct = aggregated.distinctBy { it.id }
                 val tvDistinct = aggregatedTv.distinctBy { it.id }
                 scrapedMoviesStore.setMovies(moviesDistinct)
                 scrapedTvStore.setShows(tvDistinct)
-                Log.i(TAG, "扫描完成：电影=${moviesDistinct.size}，电视剧=${tvDistinct.size}")
-            } catch (ce: CancellationException) {
-                throw ce
+                // 持久化
+                val toEntities = mutableListOf<ScrapedItemEntity>()
+                toEntities += moviesDistinct.map {
+                    ScrapedItemEntity(
+                        id = it.id,
+                        title = it.name,
+                        description = it.description,
+                        posterUri = it.posterUri,
+                        releaseDate = it.releaseDate,
+                        rating = it.rating,
+                        type = "movie",
+                        sourcePath = it.videoUri.ifBlank { null }
+                    )
+                }
+                toEntities += tvDistinct.map {
+                    ScrapedItemEntity(
+                        id = it.id,
+                        title = it.name,
+                        description = it.description,
+                        posterUri = it.posterUri,
+                        releaseDate = it.releaseDate,
+                        rating = it.rating,
+                        type = "tv",
+                        sourcePath = it.videoUri.ifBlank { null }
+                    )
+                }
+                scrapedItemDao.upsertAll(toEntities)
+                Log.i(TAG, "扫描完成并已入库：电影=${moviesDistinct.size}，电视剧=${tvDistinct.size}")
+
             } catch (e: Exception) {
                 Log.e(TAG, "刷新/刮削失败: ${e.message}", e)
+            } finally {
+                _isRefreshing.value = false
             }
         }
     }
@@ -113,7 +191,9 @@ class DashboardViewModel @Inject constructor(
                                 subtitleUri = null,
                                 posterUri = poster,
                                 name = m.name ?: m.title ?: cleanedFolderTitle,
-                                description = m.overview ?: ""
+                                description = m.overview ?: "",
+                                releaseDate = m.firstAirDate,
+                                rating = m.voteAverage
                             )
                         )
                         Log.i(TAG, "剧集目录匹配: $folderTitleRaw -> ${m.name ?: m.title} (${m.id})")
@@ -135,14 +215,22 @@ class DashboardViewModel @Inject constructor(
                             matched = r?.results?.firstOrNull()
                             if (matched != null) {
                                 val poster = matched.posterPathOrNull()?.let { "https://image.tmdb.org/t/p/w500$it" } ?: ""
+                                val base = webDavService.getCurrentConfig()?.getFormattedServerUrl()?.removeSuffix("/") ?: ""
+                                val rel = (if (path.isBlank()) file.name else "$path/${file.name}")
+                                    .trim('/')
+                                    .replace(Regex("/+"), "/")
+                                val fullUrl = if (base.isNotBlank()) "$base/$rel" else rel
+                                Log.i(TAG, "WebDAV 视频URL: $fullUrl")
                                 aggregatedMovies.add(
                                     Movie(
                                         id = matched.id.toString(),
-                                        videoUri = "",
+                                        videoUri = fullUrl,
                                         subtitleUri = null,
                                         posterUri = poster,
                                         name = matched.title ?: matched.name ?: q,
-                                        description = matched.overview ?: ""
+                                        description = matched.overview ?: "",
+                                        releaseDate = matched.releaseDate,
+                                        rating = matched.voteAverage
                                     )
                                 )
                                 Log.i(TAG, "电影匹配: $q -> ${matched.title ?: matched.name} (${matched.id})")
@@ -277,7 +365,10 @@ private object TmdbApi {
         @SerialName("original_name") val originalName: String? = null,
         @SerialName("original_title") val originalTitle: String? = null,
         val overview: String? = null,
-        @SerialName("poster_path") val posterPath: String? = null
+        @SerialName("poster_path") val posterPath: String? = null,
+        @SerialName("release_date") val releaseDate: String? = null,
+        @SerialName("first_air_date") val firstAirDate: String? = null,
+        @SerialName("vote_average") val voteAverage: Float? = null,
     )
 
     suspend fun search(path: String, query: String, extra: Map<String, String> = emptyMap()): SearchResponse? = withContext(Dispatchers.IO) {

@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.Composable
@@ -244,38 +245,44 @@ private fun MoviesRowItem(
 ) {
     var isFocused by remember { mutableStateOf(false) }
 
-    MovieCard(
-        onClick = { onMovieSelected(movie) },
-        title = {
-            MoviesRowItemText(
-                showItemTitle = showItemTitle,
-                isItemFocused = isFocused,
-                movie = movie
-            )
-        },
-        modifier = Modifier
-            .onFocusChanged {
-                isFocused = it.isFocused
-                if (it.isFocused) {
-                    onMovieFocused(movie)
-                }
-            }
-            .focusProperties {
-                left = if (index == 0) {
-                    FocusRequester.Cancel
-                } else {
-                    FocusRequester.Default
-                }
-            }
-            .then(modifier)
+    // 包一层 Column 保证在 LazyRow 的 RowScope 下，海报与文字垂直排列
+    Column(
+        modifier = modifier.width(120.dp)
     ) {
-        MoviesRowItemImage(
+        MovieCard(
+            onClick = { onMovieSelected(movie) },
+            title = {},
             modifier = Modifier
-                .width(120.dp)
-                .aspectRatio(itemDirection.aspectRatio),
-            showIndexOverImage = showIndexOverImage,
+                .onFocusChanged {
+                    isFocused = it.isFocused
+                    if (it.isFocused) {
+                        onMovieFocused(movie)
+                    }
+                }
+                .focusProperties {
+                    left = if (index == 0) {
+                        FocusRequester.Cancel
+                    } else {
+                        FocusRequester.Default
+                    }
+                }
+        ) {
+            MoviesRowItemImage(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(itemDirection.aspectRatio),
+                showIndexOverImage = showIndexOverImage,
+                movie = movie,
+                index = index
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        // 海报下方左对齐标题+日期
+        MoviesRowItemText(
+            showItemTitle = showItemTitle,
+            isItemFocused = isFocused,
             movie = movie,
-            index = index
+            modifier = Modifier.fillMaxWidth()
         )
     }
 }
@@ -329,22 +336,32 @@ private fun MoviesRowItemText(
     modifier: Modifier = Modifier
 ) {
     if (showItemTitle) {
-        val movieNameAlpha by animateFloatAsState(
-            targetValue = if (isItemFocused) 1f else 0f,
-            label = "",
-        )
+        // 标题常驻，并与海报拉开更大间距
         Text(
             text = movie.name,
             style = MaterialTheme.typography.bodyMedium.copy(
                 fontWeight = FontWeight.SemiBold
             ),
-            textAlign = TextAlign.Center,
+            textAlign = TextAlign.Start,
             modifier = modifier
-                .alpha(movieNameAlpha)
                 .fillMaxWidth()
-                .padding(top = 4.dp),
+                .padding(top = 8.dp),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+        // 上映日期
+        val date = movie.releaseDate
+        if (!date.isNullOrBlank()) {
+            Text(
+                text = date,
+                style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.Start,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
