@@ -85,12 +85,10 @@ class WebDavService @Inject constructor() {
             val config = currentConfig ?: return@withContext WebDavResult.Error("未配置WebDAV")
             val client = sardine ?: return@withContext WebDavResult.Error("WebDAV客户端未初始化")
 
-            // 如果是根目录且服务器URL包含/dav，直接使用服务器URL
-            val fullPath = if (path.isEmpty()) {
-                config.getFormattedServerUrl()
-            } else {
-                config.getFormattedServerUrl() + "/" + path.removePrefix("/")
-            }
+            // 规范化避免出现双斜杠
+            val base = config.getFormattedServerUrl().removeSuffix("/")
+            val normalizedPath = path.removePrefix("/")
+            val fullPath = if (normalizedPath.isEmpty()) base else "$base/$normalizedPath"
 
             val resources = client.list(fullPath)
 

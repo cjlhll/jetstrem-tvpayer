@@ -137,7 +137,7 @@ fun MoviesRow(
                         Modifier
                     }
                     MoviesRowItem(
-                        modifier = itemModifier.weight(1f),
+                        modifier = itemModifier,
                         index = index,
                         itemDirection = itemDirection,
                         onMovieSelected = {
@@ -212,7 +212,7 @@ fun ImmersiveListMoviesRow(
                         Modifier
                     }
                     MoviesRowItem(
-                        modifier = itemModifier.weight(1f),
+                        modifier = itemModifier,
                         index = index,
                         itemDirection = itemDirection,
                         onMovieSelected = {
@@ -271,7 +271,7 @@ private fun MoviesRowItem(
     ) {
         MoviesRowItemImage(
             modifier = Modifier
-                .fillMaxWidth(0.3f)
+                .width(120.dp)
                 .aspectRatio(itemDirection.aspectRatio),
             showIndexOverImage = showIndexOverImage,
             movie = movie,

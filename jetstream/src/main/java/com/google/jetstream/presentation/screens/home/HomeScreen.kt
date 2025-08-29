@@ -103,6 +103,10 @@ private fun Catalog(
         }
     }
 
+    // WebDAV 刮削的电影（用于替换热门趋势模块）
+    val scrapedVm: ScrapedMoviesViewModel = hiltViewModel()
+    val scraped by scrapedVm.movies.collectAsStateWithLifecycle()
+
     LaunchedEffect(shouldShowTopBar) {
         onScroll(shouldShowTopBar)
     }
@@ -127,9 +131,9 @@ private fun Catalog(
         item(contentType = "MoviesRow") {
             MoviesRow(
                 modifier = Modifier.padding(top = 16.dp),
-                movieList = trendingMovies,
-                title = StringConstants.Composable.HomeScreenTrendingTitle,
-                showAllButton = true,
+                movieList = if (scraped.isNotEmpty()) scraped else trendingMovies,
+                title = if (scraped.isNotEmpty()) "Movies (WebDAV)" else StringConstants.Composable.HomeScreenTrendingTitle,
+                showAllButton = scraped.isEmpty(),
                 onMovieSelected = onMovieClick,
                 onShowAllClick = { onShowAllClick("movies") }
             )

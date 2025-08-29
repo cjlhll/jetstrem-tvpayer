@@ -94,6 +94,7 @@ fun DashboardScreen(
     val density = LocalDensity.current
     val focusManager = LocalFocusManager.current
     val navController = rememberNavController()
+    val dashboardViewModel: DashboardViewModel = androidx.hilt.navigation.compose.hiltViewModel()
 
     var isTopBarVisible by remember { mutableStateOf(true) }
     var isTopBarFocused by remember { mutableStateOf(false) }
@@ -188,7 +189,9 @@ fun DashboardScreen(
                         launchSingleTop = true
                     }
                 }
-            }
+            },
+            onRefreshClick = { dashboardViewModel.refreshAndScrape() },
+            showRefresh = (currentDestination == Screens.Home())
         )
 
         Body(

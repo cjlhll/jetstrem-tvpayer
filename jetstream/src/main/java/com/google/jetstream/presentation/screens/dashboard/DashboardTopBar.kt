@@ -27,6 +27,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.Refresh
+
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -76,7 +78,9 @@ fun DashboardTopBar(
     selectedTabIndex: Int,
     screens: List<Screens> = TopBarTabs,
     focusRequesters: List<FocusRequester> = remember { TopBarFocusRequesters },
-    onScreenSelection: (screen: Screens) -> Unit
+    onScreenSelection: (screen: Screens) -> Unit,
+    onRefreshClick: () -> Unit = {},
+    showRefresh: Boolean = false
 ) {
     val focusManager = LocalFocusManager.current
     Box(modifier = modifier) {
@@ -101,6 +105,17 @@ fun DashboardTopBar(
                     onScreenSelection(Screens.Profile)
                 }
             )
+            if (showRefresh) {
+                Spacer(modifier = Modifier.width(12.dp))
+                androidx.tv.material3.Button(onClick = onRefreshClick) {
+                    androidx.tv.material3.Icon(
+                        imageVector = androidx.compose.material.icons.Icons.Default.Refresh,
+                        contentDescription = "刷新"
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    androidx.tv.material3.Text(text = "刷新")
+                }
+            }
             Row(
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -159,6 +174,7 @@ fun DashboardTopBar(
                 }
             }
             Spacer(modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.width(12.dp))
             JetStreamLogo(
                 modifier = Modifier
                     .alpha(0.75f)
