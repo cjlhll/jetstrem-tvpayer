@@ -316,10 +316,12 @@ private fun guessSpecs(input: String): String {
     val s = input.lowercase()
     return when {
         // 扩充更多关键词
-        "2160" in s || "4k" in s || "uhd" in s -> "4K"
-        "1440" in s || "2k" in s -> "2K"
-        "1080" in s || "fhd" in s || "fullhd" in s -> "1080P"
-        "720" in s -> "720P"
+        "2160" in s || "4k" in s || "uhd" in s || "3840x2160" in s || "2160p" in s -> "4K"
+        "1440" in s || "2k" in s || "2560x1440" in s || "1440p" in s -> "2K"
+        "1080" in s || "fhd" in s || "fullhd" in s || "1920x1080" in s || "1080p" in s -> "1080P"
+        "720" in s || "1280x720" in s || "720p" in s -> "720P"
+        "480" in s || "720x480" in s || "480p" in s -> "480P"
+        "360" in s || "640x360" in s || "360p" in s -> "360P"
         else -> ""
     }
 }

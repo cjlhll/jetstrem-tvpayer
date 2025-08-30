@@ -34,6 +34,8 @@ import com.google.jetstream.data.webdav.WebDavService
 import com.google.jetstream.data.webdav.WebDavResult
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import android.net.Uri
+import java.io.File
 
 
 @HiltViewModel
@@ -64,12 +66,27 @@ class MovieDetailsScreenViewModel @Inject constructor(
 
                 val sizeBytes: Long? = try {
                     val url = fixed.videoUri
-                    if (url.startsWith("http")) {
-                        when (val r = webDavService.statFileSizeByUrl(url)) {
-                            is WebDavResult.Success -> r.data
-                            else -> null
+                    when {
+                        url.startsWith("http") -> {
+                            when (val r = webDavService.statFileSizeByUrl(url)) {
+                                is WebDavResult.Success -> r.data
+                                else -> null
+                            }
                         }
-                    } else null
+                        url.startsWith("file") -> {
+                            val uri = Uri.parse(url)
+                            val path = uri.path
+                            if (path != null) {
+                                val file = File(path)
+                                if (file.exists()) file.length() else null
+                            } else null
+                        }
+                        else -> {
+                            // For local paths without file:// scheme
+                            val file = File(url)
+                            if (file.exists()) file.length() else null
+                        }
+                    }
                 } catch (_: Exception) { null }
 
                 MovieDetailsScreenUiState.Done(movieDetails = fixed, fileSizeBytes = sizeBytes)
