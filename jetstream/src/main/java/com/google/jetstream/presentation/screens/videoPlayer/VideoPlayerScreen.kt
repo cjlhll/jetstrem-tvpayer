@@ -39,7 +39,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.compose.PlayerSurface
-import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
+import androidx.media3.ui.compose.SURFACE_TYPE_SURFACE_VIEW
 import androidx.media3.ui.compose.modifiers.resizeWithContentScale
 import com.google.jetstream.data.entities.Movie
 import com.google.jetstream.data.entities.MovieDetails
@@ -98,8 +98,36 @@ fun VideoPlayerScreen(
 @Composable
 fun VideoPlayerScreenContent(movieDetails: MovieDetails, onBackPressed: () -> Unit, headers: Map<String, String>) {
     val context = LocalContext.current
+    // 优先用 SurfaceView 以保证 HDR/色彩路径
+
     val exoPlayer = rememberPlayer(context, headers)
 
+    // 在离开页面或销毁时停止并释放播放器，避免后台继续播放
+    androidx.compose.runtime.DisposableEffect(exoPlayer) {
+        onDispose {
+            try {
+                exoPlayer.playWhenReady = false
+                exoPlayer.stop()
+                exoPlayer.clearMediaItems()
+            } catch (_: Throwable) {}
+            try { exoPlayer.release() } catch (_: Throwable) {}
+        }
+    }
+
+    // 当应用进入后台时暂停播放
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner, exoPlayer) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
+                try {
+                    exoPlayer.playWhenReady = false
+                    exoPlayer.pause()
+                } catch (_: Throwable) {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     val videoPlayerState = rememberVideoPlayerState(
         hideSeconds = 4,
     )
@@ -113,7 +141,18 @@ fun VideoPlayerScreenContent(movieDetails: MovieDetails, onBackPressed: () -> Un
         exoPlayer.prepare()
     }
 
-    BackHandler(onBack = onBackPressed)
+    BackHandler(onBack = {
+        if (videoPlayerState.isControlsVisible) {
+            videoPlayerState.hideControls()
+        } else {
+            try {
+                exoPlayer.playWhenReady = false
+                exoPlayer.stop()
+                exoPlayer.clearMediaItems()
+            } catch (_: Throwable) {}
+            onBackPressed()
+        }
+    })
 
     val pulseState = rememberVideoPlayerPulseState()
 
@@ -128,10 +167,12 @@ fun VideoPlayerScreenContent(movieDetails: MovieDetails, onBackPressed: () -> Un
     ) {
         PlayerSurface(
             player = exoPlayer,
-            surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
+            surfaceType = SURFACE_TYPE_SURFACE_VIEW,
             modifier = Modifier.resizeWithContentScale(
                 contentScale = ContentScale.Fit,
                 sourceSizeDp = null
+                // 如果设备不支持 HDR，会由系统进行 HDR->SDR 映射；SurfaceView 更能避免 TextureView 颜色空间剪裁导致的发黑问题
+
             )
         )
 

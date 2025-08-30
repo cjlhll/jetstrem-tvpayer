@@ -47,12 +47,13 @@ android {
 
     buildTypes {
         getByName("release") {
-            isMinifyEnabled = true
+            isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("debug")
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
+            // 如需混淆，请恢复下方 proguardFiles 并解决 R8 冲突
+            // proguardFiles(
+            //     getDefaultProguardFile("proguard-android-optimize.txt"),
+            //     "proguard-rules.pro"
+            // )
         }
     }
     buildFeatures {
@@ -60,9 +61,20 @@ android {
         buildConfig = true
     }
 
+    // 仅生成 armeabi-v7a 安装包，适配老旧/32位 Android TV 设备
+    defaultConfig {
+        ndk {
+            abiFilters += listOf("armeabi-v7a")
+        }
+    }
+
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+        jniLibs {
+            // 移除可选的 androidx.graphics.path 原生库，避免 ABI 不匹配导致不可安装
+            excludes += listOf("**/libandroidx.graphics.path.so")
         }
     }
 

@@ -147,7 +147,8 @@ class DashboardViewModel @Inject constructor(
                 Log.i(TAG, "扫描完成并已入库：电影=${moviesDistinct.size}，电视剧=${tvDistinct.size}")
 
             } catch (e: Exception) {
-                Log.e(TAG, "刷新/刮削失败: ${e.message}", e)
+                val msg = e.localizedMessage ?: e.toString()
+                Log.e(TAG, "刷新/刮削失败: $msg", e)
             } finally {
                 _isRefreshing.value = false
             }

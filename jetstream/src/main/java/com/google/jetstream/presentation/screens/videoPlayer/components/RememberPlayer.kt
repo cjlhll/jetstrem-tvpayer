@@ -43,6 +43,12 @@ fun rememberPlayer(context: Context, headers: Map<String, String> = emptyMap()) 
         .setMediaSourceFactory(
             ProgressiveMediaSource.Factory(dataSourceFactory)
         )
+        .setTrackSelector(androidx.media3.exoplayer.trackselection.DefaultTrackSelector(context).apply {
+            parameters = buildUponParameters()
+                .setPreferredVideoMimeType(null) // 交由设备自行选择 HDR/SDR 解码
+                .setPreferredVideoRoleFlags(0)
+                .build()
+        })
         .setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING)
         .build()
         .apply {
