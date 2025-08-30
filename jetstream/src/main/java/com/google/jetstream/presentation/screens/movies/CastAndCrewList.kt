@@ -42,6 +42,8 @@ import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.ClassicCard
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.google.jetstream.R
 import com.google.jetstream.data.entities.MovieCast
 import com.google.jetstream.presentation.screens.dashboard.rememberChildPadding
@@ -123,12 +125,26 @@ private fun CastAndCrewItem(
             )
         },
         image = {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight(0.725f)
-                    .background(ourColors.random())
-            )
+            if (castMember.avatarUrl.isNotBlank()) {
+                AsyncImage(
+                    model = ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+                        .data(castMember.avatarUrl)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = castMember.realName,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.725f)
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.725f)
+                        .background(ourColors.random())
+                )
+            }
         },
         onClick = {}
     )

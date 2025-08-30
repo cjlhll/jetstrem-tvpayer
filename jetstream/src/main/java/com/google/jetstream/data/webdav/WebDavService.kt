@@ -29,10 +29,10 @@ import javax.inject.Singleton
  */
 @Singleton
 class WebDavService @Inject constructor() {
-    
+
     private var sardine: Sardine? = null
     private var currentConfig: WebDavConfig? = null
-    
+
     /**
      * 初始化WebDAV客户端
      */
@@ -41,7 +41,7 @@ class WebDavService @Inject constructor() {
             setCredentials(config.username, config.password)
         }
     }
-    
+
     /**
      * 测试WebDAV连接
      */
@@ -50,16 +50,16 @@ class WebDavService @Inject constructor() {
             if (!config.isValid()) {
                 return@withContext WebDavResult.Error("配置信息不完整或无效")
             }
-            
+
             val testSardine = initializeSardine(config)
             val resources = testSardine.list(config.getFormattedServerUrl())
-            
+
             WebDavResult.Success(true)
         } catch (e: Exception) {
             WebDavResult.Error("连接失败: ${e.message}", e)
         }
     }
-    
+
     /**
      * 设置WebDAV配置
      */
@@ -71,12 +71,12 @@ class WebDavService @Inject constructor() {
             null
         }
     }
-    
+
     /**
      * 获取当前配置
      */
     fun getCurrentConfig(): WebDavConfig? = currentConfig
-    
+
     /**
      * 列出目录内容
      */
@@ -97,14 +97,49 @@ class WebDavService @Inject constructor() {
             WebDavResult.Error("获取目录列表失败: ${e.message}", e)
         }
     }
-    
+
+    /**
+     * 获取单个文件的大小（通过URL进行PROPFIND）
+     */
+    suspend fun statFileSizeByUrl(url: String): WebDavResult<Long> = withContext(Dispatchers.IO) {
+        try {
+            val client = sardine ?: return@withContext WebDavResult.Error("WebDAV客户端未初始化")
+            val uri = android.net.Uri.parse(url)
+            val fileName = uri.lastPathSegment ?: url.substringAfterLast('/')
+
+            fun pickSize(list: List<com.thegrizzlylabs.sardineandroid.DavResource>): Long {
+                val exact = list.firstOrNull { !it.isDirectory && (it.name == fileName || it.path.endsWith("/$fileName")) }
+                return exact?.contentLength ?: 0L
+            }
+
+            // 先尝试直接 list(url)（部分服务商支持对文件地址执行 PROPFIND）
+            runCatching { client.list(url) }.getOrNull()?.let { res ->
+                val size = pickSize(res)
+                if (size > 0) return@withContext WebDavResult.Success(size)
+            }
+
+            // 回退：列目录并匹配文件名
+            val parent = url.substringBeforeLast('/', "")
+            if (parent.isNotBlank()) {
+                runCatching { client.list(parent) }.getOrNull()?.let { dirList ->
+                    val size = pickSize(dirList)
+                    if (size > 0) return@withContext WebDavResult.Success(size)
+                }
+            }
+
+            WebDavResult.Error("文件大小未知")
+        } catch (e: Exception) {
+            WebDavResult.Error("获取文件大小失败: ${e.message}", e)
+        }
+    }
+
     /**
      * 检查WebDAV是否已配置且有效
      */
     fun isConfigured(): Boolean {
         return currentConfig?.isValid() == true && sardine != null
     }
-    
+
     /**
      * 清除配置
      */

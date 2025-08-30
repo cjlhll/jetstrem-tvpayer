@@ -17,9 +17,20 @@
 package com.google.jetstream.presentation.screens.movies
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.ui.Alignment
+import kotlinx.coroutines.launch
+
+import androidx.compose.ui.focus.FocusRequester
+
+import androidx.compose.foundation.layout.Arrangement
+
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
+
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -72,6 +83,7 @@ fun MovieDetailsScreen(
         is MovieDetailsScreenUiState.Done -> {
             Details(
                 movieDetails = s.movieDetails,
+                fileSizeBytes = s.fileSizeBytes,
                 goToMoviePlayer = { goToMoviePlayer(s.movieDetails.id) },
                 onBackPressed = onBackPressed,
                 refreshScreenWithNewMovie = refreshScreenWithNewMovie,
@@ -86,6 +98,7 @@ fun MovieDetailsScreen(
 @Composable
 private fun Details(
     movieDetails: MovieDetails,
+    fileSizeBytes: Long?,
     goToMoviePlayer: () -> Unit,
     onBackPressed: () -> Unit,
     refreshScreenWithNewMovie: (Movie) -> Unit,
@@ -93,15 +106,21 @@ private fun Details(
 ) {
     val childPadding = rememberChildPadding()
 
+    val playButtonFocusRequester = FocusRequester()
+
     BackHandler(onBack = onBackPressed)
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     LazyColumn(
-        contentPadding = PaddingValues(bottom = 135.dp),
+        state = listState,
+        contentPadding = PaddingValues(bottom = 35.dp),
         modifier = modifier,
     ) {
         item {
             MovieDetails(
                 movieDetails = movieDetails,
-                goToMoviePlayer = goToMoviePlayer
+                fileSizeBytes = fileSizeBytes,
+                goToMoviePlayer = goToMoviePlayer,
+                focusRequester = playButtonFocusRequester
             )
         }
 
@@ -111,24 +130,7 @@ private fun Details(
             )
         }
 
-        item {
-            MoviesRow(
-                title = StringConstants
-                    .Composable
-                    .movieDetailsScreenSimilarTo(movieDetails.name),
-                titleStyle = MaterialTheme.typography.titleMedium,
-                movieList = movieDetails.similarMovies,
-                onMovieSelected = refreshScreenWithNewMovie
-            )
-        }
-
-        item {
-            MovieReviews(
-                modifier = Modifier.padding(top = childPadding.top),
-                reviewsAndRatings = movieDetails.reviewsAndRatings
-            )
-        }
-
+        // 恢复底部分割线，并将底部改为“源信息 + 影片规格”
         item {
             Box(
                 modifier = Modifier
@@ -140,36 +142,31 @@ private fun Details(
                     .background(MaterialTheme.colorScheme.onSurface)
             )
         }
-
         item {
+            SourceInfoAndSpecs(movieDetails = movieDetails, fileSizeBytes = fileSizeBytes)
+        }
+        item {
+            // 底部返回顶部按钮（居中）
+            val scope = androidx.compose.runtime.rememberCoroutineScope()
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = childPadding.start),
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .padding(top = 44.dp),
+                horizontalArrangement = Arrangement.Center
             ) {
-                val itemModifier = Modifier.width(192.dp)
-
-                TitleValueText(
-                    modifier = itemModifier,
-                    title = stringResource(R.string.status),
-                    value = movieDetails.status
-                )
-                TitleValueText(
-                    modifier = itemModifier,
-                    title = stringResource(R.string.original_language),
-                    value = movieDetails.originalLanguage
-                )
-                TitleValueText(
-                    modifier = itemModifier,
-                    title = stringResource(R.string.budget),
-                    value = movieDetails.budget
-                )
-                TitleValueText(
-                    modifier = itemModifier,
-                    title = stringResource(R.string.revenue),
-                    value = movieDetails.revenue
-                )
+                androidx.tv.material3.Button(onClick = {
+                    // 平滑滚动到顶部，并将焦点设置到“播放”按钮
+                    scope.launch {
+                        listState.animateScrollToItem(0)
+                        playButtonFocusRequester.requestFocus()
+                    }
+                }) {
+                    androidx.tv.material3.Icon(
+                        imageVector = androidx.compose.material.icons.Icons.Outlined.KeyboardArrowUp,
+                        contentDescription = "返回顶部"
+                    )
+                    androidx.tv.material3.Text("返回顶部", modifier = Modifier.padding(start = 8.dp))
+                }
             }
         }
     }

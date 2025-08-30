@@ -21,6 +21,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.jetstream.data.entities.MovieDetails
 import com.google.jetstream.data.repositories.MovieRepository
+import com.google.jetstream.data.database.dao.ScrapedItemDao
+
 import com.google.jetstream.data.repositories.ScrapedMoviesStore
 import com.google.jetstream.data.repositories.ScrapedTvStore
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -28,6 +30,11 @@ import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import com.google.jetstream.data.webdav.WebDavService
+import com.google.jetstream.data.webdav.WebDavResult
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+
 
 @HiltViewModel
 class MovieDetailsScreenViewModel @Inject constructor(
@@ -35,6 +42,8 @@ class MovieDetailsScreenViewModel @Inject constructor(
     repository: MovieRepository,
     scrapedMoviesStore: ScrapedMoviesStore,
     scrapedTvStore: ScrapedTvStore,
+    private val webDavService: WebDavService,
+    private val scrapedItemDao: ScrapedItemDao,
 ) : ViewModel() {
     val uiState = savedStateHandle
         .getStateFlow<String?>(MovieDetailsScreen.MovieIdBundleKey, null)
@@ -42,11 +51,28 @@ class MovieDetailsScreenViewModel @Inject constructor(
             if (id == null) {
                 MovieDetailsScreenUiState.Error
             } else {
+                // 并行加载详情与文件大小
                 val details = repository.getMovieDetails(movieId = id)
+
+                // 若数据库有已刮削的源路径，优先使用它
+                val entity = try { scrapedItemDao.getById(id) } catch (_: Exception) { null }
+                val merged = entity?.sourcePath?.takeIf { it.isNotBlank() }?.let { details.copy(videoUri = it) } ?: details
+
                 val titleFromStores = scrapedMoviesStore.movies.value.firstOrNull { it.id == id }?.name
                     ?: scrapedTvStore.shows.value.firstOrNull { it.id == id }?.name
-                val fixed = if (titleFromStores != null) details.copy(name = titleFromStores) else details
-                MovieDetailsScreenUiState.Done(movieDetails = fixed)
+                val fixed = if (titleFromStores != null) merged.copy(name = titleFromStores) else merged
+
+                val sizeBytes: Long? = try {
+                    val url = fixed.videoUri
+                    if (url.startsWith("http")) {
+                        when (val r = webDavService.statFileSizeByUrl(url)) {
+                            is WebDavResult.Success -> r.data
+                            else -> null
+                        }
+                    } else null
+                } catch (_: Exception) { null }
+
+                MovieDetailsScreenUiState.Done(movieDetails = fixed, fileSizeBytes = sizeBytes)
             }
         }.stateIn(
             scope = viewModelScope,
@@ -58,5 +84,5 @@ class MovieDetailsScreenViewModel @Inject constructor(
 sealed class MovieDetailsScreenUiState {
     data object Loading : MovieDetailsScreenUiState()
     data object Error : MovieDetailsScreenUiState()
-    data class Done(val movieDetails: MovieDetails) : MovieDetailsScreenUiState()
+    data class Done(val movieDetails: MovieDetails, val fileSizeBytes: Long? = null) : MovieDetailsScreenUiState()
 }
