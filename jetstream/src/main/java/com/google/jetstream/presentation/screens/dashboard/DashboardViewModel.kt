@@ -19,7 +19,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import java.net.HttpURLConnection
 import java.net.URLEncoder
 import java.net.URL
@@ -27,6 +34,8 @@ import javax.inject.Inject
 import com.google.jetstream.data.entities.Movie
 import com.google.jetstream.data.repositories.ScrapedMoviesStore
 import com.google.jetstream.data.repositories.ScrapedTvStore
+import com.google.jetstream.data.remote.TmdbService
+import com.google.jetstream.data.entities.MovieCast
 
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
@@ -117,31 +126,14 @@ class DashboardViewModel @Inject constructor(
                 val tvDistinct = aggregatedTv.distinctBy { it.id }
                 scrapedMoviesStore.setMovies(moviesDistinct)
                 scrapedTvStore.setShows(tvDistinct)
-                // 持久化
+                // 持久化 - 现在使用增强的实体数据
                 val toEntities = mutableListOf<ScrapedItemEntity>()
-                toEntities += moviesDistinct.map {
-                    ScrapedItemEntity(
-                        id = it.id,
-                        title = it.name,
-                        description = it.description,
-                        posterUri = it.posterUri,
-                        releaseDate = it.releaseDate,
-                        rating = it.rating,
-                        type = "movie",
-                        sourcePath = it.videoUri.ifBlank { null }
-                    )
+                toEntities += moviesDistinct.mapNotNull { movie ->
+                    // 从Movie对象中提取详情信息（如果有的话）
+                    createScrapedItemEntity(movie, "movie")
                 }
-                toEntities += tvDistinct.map {
-                    ScrapedItemEntity(
-                        id = it.id,
-                        title = it.name,
-                        description = it.description,
-                        posterUri = it.posterUri,
-                        releaseDate = it.releaseDate,
-                        rating = it.rating,
-                        type = "tv",
-                        sourcePath = it.videoUri.ifBlank { null }
-                    )
+                toEntities += tvDistinct.mapNotNull { tv ->
+                    createScrapedItemEntity(tv, "tv")
                 }
                 scrapedItemDao.upsertAll(toEntities)
                 Log.i(TAG, "扫描完成并已入库：电影=${moviesDistinct.size}，电视剧=${tvDistinct.size}")
@@ -215,25 +207,17 @@ class DashboardViewModel @Inject constructor(
                             val r = TmdbApi.search("/3/search/movie", q, extras)
                             matched = r?.results?.firstOrNull()
                             if (matched != null) {
-                                val poster = matched.posterPathOrNull()?.let { "https://image.tmdb.org/t/p/w500$it" } ?: ""
                                 val base = webDavService.getCurrentConfig()?.getFormattedServerUrl()?.removeSuffix("/") ?: ""
                                 val rel = (if (path.isBlank()) file.name else "$path/${file.name}")
                                     .trim('/')
                                     .replace(Regex("/+"), "/")
                                 val fullUrl = if (base.isNotBlank()) "$base/$rel" else rel
                                 Log.i(TAG, "WebDAV 视频URL: $fullUrl")
-                                aggregatedMovies.add(
-                                    Movie(
-                                        id = matched.id.toString(),
-                                        videoUri = fullUrl,
-                                        subtitleUri = null,
-                                        posterUri = poster,
-                                        name = matched.title ?: matched.name ?: q,
-                                        description = matched.overview ?: "",
-                                        releaseDate = matched.releaseDate,
-                                        rating = matched.voteAverage
-                                    )
-                                )
+                                
+                                // 获取完整的TMDB详情信息
+                                val movieWithDetails = createMovieWithFullDetails(matched, fullUrl)
+                                aggregatedMovies.add(movieWithDetails)
+                                
                                 Log.i(TAG, "电影匹配: $q -> ${matched.title ?: matched.name} (${matched.id})")
                                 break
                             }
@@ -339,6 +323,171 @@ class DashboardViewModel @Inject constructor(
     }
 
     private fun TmdbApi.SearchItem.posterPathOrNull(): String? = this.posterPath
+
+    /**
+     * 根据TMDB搜索结果创建包含完整详情的Movie对象
+     */
+    private suspend fun createMovieWithFullDetails(searchItem: TmdbApi.SearchItem, videoUri: String): Movie {
+        try {
+            // 获取完整的TMDB详情信息
+            val details = TmdbService.getMovieDetails(searchItem.id.toString())
+            val credits = TmdbService.getCredits(searchItem.id.toString())
+            val certification = TmdbService.getReleaseCertification(searchItem.id.toString()) ?: "PG-13"
+            val similar = TmdbService.getSimilar(searchItem.id.toString())?.results ?: emptyList()
+            
+            // 使用显式的序列化器将各部分转换为 JsonElement，避免 Map<String, Any> 导致的序列化错误
+            val fullDetailsJson = buildMap<String, kotlinx.serialization.json.JsonElement> {
+                details?.let {
+                    put(
+                        "tmdb_details",
+                        Json.encodeToJsonElement(
+                            com.google.jetstream.data.remote.TmdbService.MovieDetailsResponse.serializer(),
+                            it
+                        )
+                    )
+                }
+                credits?.let {
+                    put(
+                        "tmdb_credits",
+                        Json.encodeToJsonElement(
+                            com.google.jetstream.data.remote.TmdbService.CreditsResponse.serializer(),
+                            it
+                        )
+                    )
+                }
+                certification?.let {
+                    put("tmdb_certification", JsonPrimitive(it))
+                }
+                put(
+                    "tmdb_similar",
+                    Json.encodeToJsonElement(
+                        kotlinx.serialization.builtins.ListSerializer(
+                            com.google.jetstream.data.remote.TmdbService.SimilarItem.serializer()
+                        ),
+                        similar.take(10)
+                    )
+                )
+            }
+            
+            return Movie(
+                id = searchItem.id.toString(),
+                videoUri = videoUri,
+                subtitleUri = null,
+                posterUri = searchItem.posterPathOrNull()?.let { "https://image.tmdb.org/t/p/w500$it" } ?: "",
+                name = searchItem.title ?: searchItem.name ?: "",
+                description = Json.encodeToString<Map<String, JsonElement>>(fullDetailsJson), // 临时存储详情信息
+                releaseDate = searchItem.releaseDate,
+                rating = searchItem.voteAverage
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "获取TMDB详情失败: ${e.message}")
+            // 如果获取详情失败，返回基础信息
+            return Movie(
+                id = searchItem.id.toString(),
+                videoUri = videoUri,
+                subtitleUri = null,
+                posterUri = searchItem.posterPathOrNull()?.let { "https://image.tmdb.org/t/p/w500$it" } ?: "",
+                name = searchItem.title ?: searchItem.name ?: "",
+                description = searchItem.overview ?: "",
+                releaseDate = searchItem.releaseDate,
+                rating = searchItem.voteAverage
+            )
+        }
+    }
+    
+    /**
+     * 从Movie对象创建ScrapedItemEntity，包含完整的详情信息
+     */
+    private fun createScrapedItemEntity(movie: Movie, type: String): ScrapedItemEntity? {
+        return try {
+            // 尝试解析存储在description中的详情信息
+            val detailsMap = try {
+                Json.decodeFromString<Map<String, kotlinx.serialization.json.JsonElement>>(movie.description)
+            } catch (e: Exception) {
+                null
+            }
+            
+            if (detailsMap != null) {
+                // 解析TMDB详情信息
+                val tmdbDetails = detailsMap["tmdb_details"]?.let {
+                    try { Json.decodeFromJsonElement(TmdbService.MovieDetailsResponse.serializer(), it) } catch (e: Exception) { null }
+                }
+                val tmdbCredits = detailsMap["tmdb_credits"]?.let {
+                    try { Json.decodeFromJsonElement(TmdbService.CreditsResponse.serializer(), it) } catch (e: Exception) { null }
+                }
+                val certification = detailsMap["tmdb_certification"]?.let { el ->
+                    el.jsonPrimitive.contentOrNull
+                }
+                val similar = detailsMap["tmdb_similar"]?.let { el ->
+                    try { Json.decodeFromJsonElement(ListSerializer(TmdbService.SimilarItem.serializer()), el) } catch (e: Exception) { emptyList() }
+                } ?: emptyList()
+                
+                // 构建详情字段
+                val categories = tmdbDetails?.genres?.map { it.name } ?: emptyList()
+                val castAndCrew = tmdbCredits?.cast?.take(10)?.map {
+                    MovieCast(
+                        id = it.id.toString(),
+                        characterName = it.character ?: "",
+                        realName = it.name,
+                        avatarUrl = it.profilePath?.let { p -> TmdbService.IMAGE_BASE_W500 + p } ?: ""
+                    )
+                } ?: emptyList()
+                
+                val director = tmdbCredits?.crew?.firstOrNull { it.job.equals("Director", true) }?.name ?: ""
+                val screenplay = tmdbCredits?.crew?.firstOrNull { it.job?.contains("Writer", true) == true || it.job?.contains("Screenplay", true) == true }?.name ?: ""
+                val music = tmdbCredits?.crew?.firstOrNull { it.job?.contains("Music", true) == true || it.job?.contains("Composer", true) == true }?.name ?: ""
+                
+                fun minutesToDuration(mins: Int?): String = if (mins == null || mins <= 0) "" else "${mins / 60}h ${mins % 60}m"
+                
+                val ratingText = tmdbDetails?.voteAverage?.let { String.format("⭐ %.1f", it) } ?: "⭐ --"
+                
+                ScrapedItemEntity(
+                    id = movie.id,
+                    title = tmdbDetails?.title ?: movie.name,
+                    description = tmdbDetails?.overview ?: movie.description,
+                    posterUri = movie.posterUri,
+                    releaseDate = movie.releaseDate,
+                    rating = movie.rating,
+                    type = type,
+                    sourcePath = movie.videoUri.ifBlank { null },
+                    backdropUri = tmdbDetails?.backdropPath?.let { TmdbService.IMAGE_BASE_W780 + it },
+                    pgRating = ratingText,
+                    categories = if (categories.isNotEmpty()) Json.encodeToString(categories) else null,
+                    duration = minutesToDuration(tmdbDetails?.runtime),
+                    director = director,
+                    screenplay = screenplay,
+                    music = music,
+                    castAndCrew = if (castAndCrew.isNotEmpty()) Json.encodeToString(castAndCrew) else null
+                )
+            } else {
+                // 如果没有详情信息，创建基础实体
+                ScrapedItemEntity(
+                    id = movie.id,
+                    title = movie.name,
+                    description = movie.description,
+                    posterUri = movie.posterUri,
+                    releaseDate = movie.releaseDate,
+                    rating = movie.rating,
+                    type = type,
+                    sourcePath = movie.videoUri.ifBlank { null }
+                )
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "创建ScrapedItemEntity失败: ${e.message}")
+            // 创建基础实体作为后备
+            ScrapedItemEntity(
+                id = movie.id,
+                title = movie.name,
+                description = movie.description,
+                posterUri = movie.posterUri,
+                releaseDate = movie.releaseDate,
+                rating = movie.rating,
+                type = type,
+                sourcePath = movie.videoUri.ifBlank { null }
+            )
+        }
+    }
+    
 
 
     companion object {

@@ -107,7 +107,7 @@ fun MovieDetails(
                             movieDetails.releaseDate,
                             movieDetails.categories.joinToString(", "),
                             movieDetails.duration
-                        )
+                        ).filter { it.isNotBlank() }
                     )
                     DirectorScreenplayMusicRow(
                         director = movieDetails.director,
@@ -169,28 +169,29 @@ private fun DirectorScreenplayMusicRow(
     screenplay: String,
     music: String
 ) {
-    Row(modifier = Modifier.padding(top = 32.dp)) {
-        TitleValueText(
-            modifier = Modifier
-                .padding(end = 32.dp)
-                .weight(1f),
-            title = stringResource(R.string.director),
-            value = director
-        )
-
-        TitleValueText(
-            modifier = Modifier
-                .padding(end = 32.dp)
-                .weight(1f),
-            title = stringResource(R.string.screenplay),
-            value = screenplay
-        )
-
-        TitleValueText(
-            modifier = Modifier.weight(1f),
-            title = stringResource(R.string.music),
-            value = music
-        )
+    // 只显示有值的字段
+    val fields = listOfNotNull(
+        if (director.isNotBlank()) Pair(stringResource(R.string.director), director) else null,
+        if (screenplay.isNotBlank()) Pair(stringResource(R.string.screenplay), screenplay) else null,
+        if (music.isNotBlank()) Pair(stringResource(R.string.music), music) else null
+    )
+    
+    if (fields.isNotEmpty()) {
+        Row(modifier = Modifier.padding(top = 32.dp)) {
+            fields.forEachIndexed { index, (title, value) ->
+                TitleValueText(
+                    modifier = Modifier
+                        .then(if (index < fields.lastIndex) Modifier.padding(end = 32.dp) else Modifier)
+                        .weight(1f),
+                    title = title,
+                    value = value
+                )
+            }
+            // 填充剩余空间，保持布局平衡
+            repeat(3 - fields.size) {
+                Spacer(modifier = Modifier.weight(1f))
+            }
+        }
     }
 }
 

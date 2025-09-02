@@ -52,8 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.google.jetstream.data.repositories.WebDavRepository
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
+import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import androidx.tv.material3.Button
 import androidx.tv.material3.ExperimentalTvMaterial3Api
@@ -84,15 +83,63 @@ fun WebDavBrowserSection(
     modifier: Modifier = Modifier,
     repository: WebDavRepository = hiltViewModel<WebDavBrowserViewModel>().repository
 ) {
+    val coroutineScope = rememberCoroutineScope()
     var showWebDavListDialog by remember { mutableStateOf(false) }
     var showDirectoryPickerDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var selectedWebDavConfig by remember { mutableStateOf<WebDavConfig?>(null) }
     var selectedDirectoryForDelete by remember { mutableStateOf<ResourceDirectory?>(null) }
+    var hasError by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf("") }
 
     // 从Repository加载WebDAV配置和资源目录
     val webDavConfigs by repository.getAllWebDavConfigs().collectAsState(initial = emptyList())
     val resourceDirectories by repository.getAllResourceDirectories().collectAsState(initial = emptyList())
+    
+    // 使用LaunchedEffect来处理初始化异常
+    LaunchedEffect(Unit) {
+        try {
+            // 这里可以添加任何需要在组件初始化时执行的操作
+        } catch (e: Exception) {
+            hasError = true
+            errorMessage = "初始化失败: ${e.message}"
+        }
+    }
+
+    // 如果有错误，显示错误信息
+    if (hasError) {
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(horizontal = 72.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "加载失败",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+                Text(
+                    text = errorMessage,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
+                Button(
+                    onClick = {
+                        hasError = false
+                        errorMessage = ""
+                    }
+                ) {
+                    Text("重试")
+                }
+            }
+        }
+        return
+    }
 
     LazyColumn(
         modifier = modifier
@@ -221,8 +268,13 @@ fun WebDavBrowserSection(
         },
         webDavConfigs = webDavConfigs,
         onDeleteConfig = { configId ->
-            CoroutineScope(Dispatchers.IO).launch {
-                repository.deleteWebDavConfig(configId)
+            coroutineScope.launch {
+                try {
+                    repository.deleteWebDavConfig(configId)
+                } catch (e: Exception) {
+                    hasError = true
+                    errorMessage = "删除WebDAV配置失败: ${e.message}"
+                }
             }
         },
         repository = repository,
@@ -258,8 +310,13 @@ fun WebDavBrowserSection(
                     serverName = config.displayName
                 )
 
-                CoroutineScope(Dispatchers.IO).launch {
-                    repository.saveResourceDirectory(newDirectory, config.id, config.displayName)
+                coroutineScope.launch {
+                    try {
+                        repository.saveResourceDirectory(newDirectory, config.id, config.displayName)
+                    } catch (e: Exception) {
+                        hasError = true
+                        errorMessage = "保存资源目录失败: ${e.message}"
+                    }
                 }
             }
         }
@@ -296,8 +353,13 @@ fun WebDavBrowserSection(
                         Button(
                             onClick = {
                                 selectedDirectoryForDelete?.let { directory ->
-                                    CoroutineScope(Dispatchers.IO).launch {
-                                        repository.deleteResourceDirectory(directory.id)
+                                    coroutineScope.launch {
+                                        try {
+                                            repository.deleteResourceDirectory(directory.id)
+                                        } catch (e: Exception) {
+                                            hasError = true
+                                            errorMessage = "删除资源目录失败: ${e.message}"
+                                        }
                                     }
                                 }
                                 showDeleteDialog = false

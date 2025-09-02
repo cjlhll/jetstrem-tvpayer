@@ -19,6 +19,8 @@ package com.google.jetstream.data.database
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import android.content.Context
 import com.google.jetstream.data.database.dao.ResourceDirectoryDao
 import com.google.jetstream.data.database.dao.WebDavConfigDao
@@ -33,7 +35,7 @@ import com.google.jetstream.data.database.entities.ScrapedItemEntity
         ResourceDirectoryEntity::class,
         ScrapedItemEntity::class
     ],
-    version = 2,
+    version = 4,
     exportSchema = false
 )
 abstract class JetStreamDatabase : RoomDatabase() {
@@ -46,13 +48,74 @@ abstract class JetStreamDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: JetStreamDatabase? = null
         
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // 添加新的详情字段到 scraped_items 表
+                database.execSQL("ALTER TABLE scraped_items ADD COLUMN backdropUri TEXT")
+                database.execSQL("ALTER TABLE scraped_items ADD COLUMN pgRating TEXT")
+                database.execSQL("ALTER TABLE scraped_items ADD COLUMN categories TEXT")
+                database.execSQL("ALTER TABLE scraped_items ADD COLUMN duration TEXT")
+                database.execSQL("ALTER TABLE scraped_items ADD COLUMN director TEXT")
+                database.execSQL("ALTER TABLE scraped_items ADD COLUMN screenplay TEXT")
+                database.execSQL("ALTER TABLE scraped_items ADD COLUMN music TEXT")
+                database.execSQL("ALTER TABLE scraped_items ADD COLUMN castAndCrew TEXT")
+            }
+        }
+        
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // 移除不再使用的字段（通过重建表的方式）
+                // 创建新表
+                database.execSQL("""
+                    CREATE TABLE scraped_items_new (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        title TEXT NOT NULL,
+                        description TEXT NOT NULL,
+                        posterUri TEXT NOT NULL,
+                        releaseDate TEXT,
+                        rating REAL,
+                        type TEXT NOT NULL,
+                        sourcePath TEXT,
+                        backdropUri TEXT,
+                        pgRating TEXT,
+                        categories TEXT,
+                        duration TEXT,
+                        director TEXT,
+                        screenplay TEXT,
+                        music TEXT,
+                        castAndCrew TEXT,
+                        createdAt INTEGER NOT NULL
+                    )
+                """)
+                
+                // 复制数据（显式指定列，包含 createdAt）
+                database.execSQL("""
+                    INSERT INTO scraped_items_new (
+                        id, title, description, posterUri, releaseDate, rating, type, sourcePath,
+                        backdropUri, pgRating, categories, duration, director, screenplay, music, castAndCrew, createdAt
+                    )
+                    SELECT 
+                        id, title, description, posterUri, releaseDate, rating, type, sourcePath,
+                        backdropUri, pgRating, categories, duration, director, screenplay, music, castAndCrew, createdAt
+                    FROM scraped_items
+                """)
+                
+                // 删除旧表
+                database.execSQL("DROP TABLE scraped_items")
+                
+                // 重命名新表
+                database.execSQL("ALTER TABLE scraped_items_new RENAME TO scraped_items")
+            }
+        }
+        
         fun getDatabase(context: Context): JetStreamDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     JetStreamDatabase::class.java,
                     "jetstream_database"
-                ).fallbackToDestructiveMigration()
+                ).addMigrations(MIGRATION_2_3, MIGRATION_3_4)
+                .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance
                 instance

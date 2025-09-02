@@ -135,9 +135,6 @@ fun VideoPlayerScreenContent(movieDetails: MovieDetails, onBackPressed: () -> Un
         android.util.Log.i("VideoPlayer", "准备播放 URL: ${movieDetails.videoUri}")
     LaunchedEffect(exoPlayer, movieDetails) {
         exoPlayer.addMediaItem(movieDetails.intoMediaItem())
-        movieDetails.similarMovies.forEach {
-            exoPlayer.addMediaItem(it.intoMediaItem())
-        }
         exoPlayer.prepare()
     }
 

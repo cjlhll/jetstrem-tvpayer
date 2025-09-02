@@ -17,7 +17,9 @@
 package com.google.jetstream.data.entities
 
 import com.google.jetstream.data.models.MovieCastResponseItem
+import kotlinx.serialization.Serializable
 
+@Serializable
 data class MovieCast(
     val id: String,
     val characterName: String,

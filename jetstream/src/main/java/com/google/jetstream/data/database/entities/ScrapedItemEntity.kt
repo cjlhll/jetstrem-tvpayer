@@ -13,6 +13,16 @@ data class ScrapedItemEntity(
     val rating: Float?,
     val type: String, // "movie" or "tv"
     val sourcePath: String?,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    
+    // 详情页面所需的额外字段
+    val backdropUri: String? = null,
+    val pgRating: String? = null, // 评级信息，如 "⭐ 7.5" 或 "PG-13"
+    val categories: String? = null, // JSON字符串存储类型列表
+    val duration: String? = null, // 时长，如 "2h 30m"
+    val director: String? = null,
+    val screenplay: String? = null,
+    val music: String? = null,
+    val castAndCrew: String? = null // JSON字符串存储演员列表
 )
 

@@ -29,6 +29,9 @@ import com.google.jetstream.data.util.StringConstants.Movie.Reviewer.DefaultCoun
 import com.google.jetstream.data.util.StringConstants.Movie.Reviewer.DefaultRating
 import com.google.jetstream.data.util.StringConstants.Movie.Reviewer.FreshTomatoes
 import com.google.jetstream.data.util.StringConstants.Movie.Reviewer.ReviewerName
+import com.google.jetstream.data.database.dao.ScrapedItemDao
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.decodeFromString
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
@@ -40,6 +43,7 @@ class MovieRepositoryImpl @Inject constructor(
     private val tvDataSource: TvDataSource,
     private val movieCastDataSource: MovieCastDataSource,
     private val movieCategoryDataSource: MovieCategoryDataSource,
+    private val scrapedItemDao: ScrapedItemDao,
 ) : MovieRepository {
 
     override fun getFeaturedMovies() = flow {
@@ -81,89 +85,71 @@ class MovieRepositoryImpl @Inject constructor(
     }
 
     override suspend fun getMovieDetails(movieId: String): MovieDetails {
-        // 先从本地列表拿到基础封面与视频地址（WebDAV），其余信息用 TMDB 填充
-        val movieList = movieDataSource.getMovieList()
-        val base = movieList.find { it.id == movieId } ?: movieList.first()
-
-        // TMDB 详情
-        val details = TmdbService.getMovieDetails(movieId)
-        // 发行分级（PG）
-        val certification = TmdbService.getReleaseCertification(movieId) ?: "PG-13"
-        // credits
-        val credits = TmdbService.getCredits(movieId)
-        // 相似影片
-        val similar = TmdbService.getSimilar(movieId)?.results ?: emptyList()
-
-        // 类型转中文：TMDB 已根据 language=zh-CN 返回中文
-        val categoriesZh = details?.genres?.map { it.name } ?: emptyList()
-
-        // 演员：只取前 10
-        val castAndCrew: List<MovieCast> = (credits?.cast ?: emptyList()).take(10).map {
-            MovieCast(
-                id = it.id.toString(),
-                characterName = it.character ?: "",
-                realName = it.name,
-                avatarUrl = it.profilePath?.let { p -> TmdbService.IMAGE_BASE_W500 + p } ?: ""
+        // 优先从数据库获取已刮削的完整数据
+        val scrapedItem = scrapedItemDao.getById(movieId)
+        
+        if (scrapedItem != null) {
+            // 从数据库中获取完整数据
+            return createMovieDetailsFromScrapedItem(scrapedItem)
+        } else {
+            // 如果数据库中没有，回退到本地数据源（兼容性处理）
+            val movieList = movieDataSource.getMovieList()
+            val base = movieList.find { it.id == movieId } ?: movieList.first()
+            
+            return MovieDetails(
+                id = base.id,
+                videoUri = base.videoUri,
+                subtitleUri = base.subtitleUri,
+                posterUri = base.posterUri,
+                backdropUri = base.posterUri, // 使用poster作为backdrop的后备
+                name = base.name,
+                description = base.description,
+                pgRating = base.rating?.let { String.format("⭐ %.1f", it) } ?: "⭐ --",
+                releaseDate = base.releaseDate ?: "",
+                categories = listOf("电影"),
+                duration = "",
+                director = "",
+                screenplay = "",
+                music = "",
+                castAndCrew = emptyList(),
             )
         }
-
-        // 导演/编剧/音乐（从 crew 里挑）
-        val director = credits?.crew?.firstOrNull { it.job.equals("Director", true) }?.name ?: ""
-        val screenplay = credits?.crew?.firstOrNull { it.job?.contains("Writer", true) == true || it.job?.contains("Screenplay", true) == true }?.name ?: ""
-        val music = credits?.crew?.firstOrNull { it.job?.contains("Music", true) == true || it.job?.contains("Composer", true) == true }?.name ?: ""
-
-        // 相似影片映射到现有 Movie 实体
-        val similarMovies: MovieList = similar.take(10).map {
-            Movie(
-                id = it.id.toString(),
-                videoUri = "", // 这里只展示封面与信息
-                subtitleUri = null,
-                posterUri = it.posterPath?.let { p -> TmdbService.IMAGE_BASE_W500 + p } ?: base.posterUri,
-                name = it.title ?: it.name ?: "",
-                description = it.overview ?: "",
-                releaseDate = it.releaseDate,
-                rating = it.voteAverage
-            )
-        }
-
-        fun minutesToDuration(mins: Int?): String = if (mins == null || mins <= 0) "" else "${mins / 60}h ${mins % 60}m"
-        fun money(v: Long?): String = if (v == null || v <= 0) "-" else "$" + String.format("%,d", v)
-
-        val ratingText = details?.voteAverage?.let { String.format("⭐ %.1f", it) } ?: "⭐ --"
-
-        return MovieDetails(
-            id = base.id,
-            videoUri = base.videoUri,
-            subtitleUri = base.subtitleUri,
-            posterUri = details?.posterPath?.let { TmdbService.IMAGE_BASE_W780 + it } ?: base.posterUri,
-            backdropUri = details?.backdropPath?.let { TmdbService.IMAGE_BASE_W780 + it }
-                ?: details?.posterPath?.let { TmdbService.IMAGE_BASE_W780 + it } ?: base.posterUri,
-            name = details?.title ?: base.name,
-            description = details?.overview ?: base.description,
-            pgRating = ratingText,
-            releaseDate = details?.releaseDate ?: (base.releaseDate ?: ""),
-            categories = if (categoriesZh.isNotEmpty()) categoriesZh else listOf("电影"),
-            duration = minutesToDuration(details?.runtime),
-            director = director,
-            screenplay = screenplay,
-            music = music,
-            castAndCrew = castAndCrew,
-            status = when (details?.status) {
-                "Released" -> "已上映"
-                "Post Production" -> "后期制作"
-                "In Production" -> "制作中"
-                "Planned" -> "计划中"
-                "Canceled" -> "已取消"
-                else -> details?.status ?: ""
-            },
-            originalLanguage = languageCodeToChinese(details?.originalLanguage ?: ""),
-            budget = money(details?.budget),
-            revenue = money(details?.revenue),
-            similarMovies = emptyList(),
-            reviewsAndRatings = emptyList(),
-        )
     }
 
+    /**
+     * 从ScrapedItemEntity创建MovieDetails对象
+     */
+    private fun createMovieDetailsFromScrapedItem(scrapedItem: com.google.jetstream.data.database.entities.ScrapedItemEntity): MovieDetails {
+        val json = Json { ignoreUnknownKeys = true }
+        
+        // 解析JSON字段
+        val categories = scrapedItem.categories?.let {
+            try { json.decodeFromString<List<String>>(it) } catch (e: Exception) { emptyList() }
+        } ?: emptyList()
+        
+        val castAndCrew = scrapedItem.castAndCrew?.let {
+            try { json.decodeFromString<List<MovieCast>>(it) } catch (e: Exception) { emptyList() }
+        } ?: emptyList()
+        
+        return MovieDetails(
+            id = scrapedItem.id,
+            videoUri = scrapedItem.sourcePath ?: "",
+            subtitleUri = null, // 暂时不支持字幕
+            posterUri = scrapedItem.posterUri,
+            backdropUri = scrapedItem.backdropUri ?: scrapedItem.posterUri,
+            name = scrapedItem.title,
+            description = scrapedItem.description,
+            pgRating = scrapedItem.pgRating ?: "⭐ --",
+            releaseDate = scrapedItem.releaseDate ?: "",
+            categories = if (categories.isNotEmpty()) categories else listOf("电影"),
+            duration = scrapedItem.duration ?: "",
+            director = scrapedItem.director ?: "",
+            screenplay = scrapedItem.screenplay ?: "",
+            music = scrapedItem.music ?: "",
+            castAndCrew = castAndCrew,
+        )
+    }
+    
     private fun languageCodeToChinese(code: String): String = when (code.lowercase()) {
         "en" -> "英语"
         "zh" -> "中文"

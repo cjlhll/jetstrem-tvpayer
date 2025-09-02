@@ -33,7 +33,8 @@ import javax.inject.Inject
  */
 @HiltViewModel
 class WebDavBrowserViewModel @Inject constructor(
-    private val webDavService: WebDavService
+    val webDavService: WebDavService,
+    val repository: com.google.jetstream.data.repositories.WebDavRepository
 ) : ViewModel() {
 
     // UI状态

@@ -32,10 +32,4 @@ data class MovieDetails(
     val screenplay: String,
     val music: String,
     val castAndCrew: List<MovieCast>,
-    val status: String,
-    val originalLanguage: String,
-    val budget: String,
-    val revenue: String,
-    val similarMovies: MovieList,
-    val reviewsAndRatings: List<MovieReviewsAndRatings>,
 )
