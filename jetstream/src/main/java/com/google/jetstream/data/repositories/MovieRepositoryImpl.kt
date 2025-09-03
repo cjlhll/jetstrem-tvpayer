@@ -131,6 +131,13 @@ class MovieRepositoryImpl @Inject constructor(
             try { json.decodeFromString<List<MovieCast>>(it) } catch (e: Exception) { emptyList() }
         } ?: emptyList()
         
+        // 根据类型设置默认类别
+        val defaultCategory = when (scrapedItem.type) {
+            "tv" -> "电视剧"
+            "movie" -> "电影"
+            else -> "影片"
+        }
+        
         return MovieDetails(
             id = scrapedItem.id,
             videoUri = scrapedItem.sourcePath ?: "",
@@ -141,7 +148,7 @@ class MovieRepositoryImpl @Inject constructor(
             description = scrapedItem.description,
             pgRating = scrapedItem.pgRating ?: "⭐ --",
             releaseDate = scrapedItem.releaseDate ?: "",
-            categories = if (categories.isNotEmpty()) categories else listOf("电影"),
+            categories = if (categories.isNotEmpty()) categories else listOf(defaultCategory),
             duration = scrapedItem.duration ?: "",
             director = scrapedItem.director ?: "",
             screenplay = scrapedItem.screenplay ?: "",

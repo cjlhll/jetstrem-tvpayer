@@ -176,20 +176,12 @@ class DashboardViewModel @Inject constructor(
                         if (matched != null) break
                     }
                     matched?.let { m ->
-                        val poster = m.posterPathOrNull()?.let { "https://image.tmdb.org/t/p/w500$it" } ?: ""
-                        aggregatedTv.add(
-                            Movie(
-                                id = m.id.toString(),
-                                videoUri = "",
-                                subtitleUri = null,
-                                posterUri = poster,
-                                name = m.name ?: m.title ?: cleanedFolderTitle,
-                                description = m.overview ?: "",
-                                releaseDate = m.firstAirDate,
-                                rating = m.voteAverage
-                            )
-                        )
-                        Log.i(TAG, "剧集目录匹配: $folderTitleRaw -> ${m.name ?: m.title} (${m.id})")
+                        // 计算库中的集数
+                        val localEpisodeCount = files.size
+                        // 获取完整的TMDB电视剧详情信息
+                        val tvWithDetails = createTvWithFullDetails(m, "", localEpisodeCount)
+                        aggregatedTv.add(tvWithDetails)
+                        Log.i(TAG, "剧集目录匹配: $folderTitleRaw -> ${m.name ?: m.title} (${m.id})，库中${localEpisodeCount}集")
                     }
                 } else {
                     // 文件逐个尝试电影匹配
@@ -394,6 +386,79 @@ class DashboardViewModel @Inject constructor(
             )
         }
     }
+
+    /**
+     * 根据TMDB搜索结果创建包含完整详情的电视剧Movie对象
+     */
+    private suspend fun createTvWithFullDetails(searchItem: TmdbApi.SearchItem, videoUri: String, localEpisodeCount: Int = 0): Movie {
+        try {
+            // 获取完整的TMDB电视剧详情信息
+            val details = TmdbService.getTvDetails(searchItem.id.toString())
+            val credits = TmdbService.getTvCredits(searchItem.id.toString())
+            val contentRating = TmdbService.getTvContentRating(searchItem.id.toString()) ?: "TV-14"
+            val similar = TmdbService.getTvSimilar(searchItem.id.toString())?.results ?: emptyList()
+            
+            // 使用显式的序列化器将各部分转换为 JsonElement，避免 Map<String, Any> 导致的序列化错误
+            val fullDetailsJson = buildMap<String, kotlinx.serialization.json.JsonElement> {
+                details?.let {
+                    put(
+                        "tmdb_details",
+                        Json.encodeToJsonElement(
+                            com.google.jetstream.data.remote.TmdbService.TvDetailsResponse.serializer(),
+                            it
+                        )
+                    )
+                }
+                credits?.let {
+                    put(
+                        "tmdb_credits",
+                        Json.encodeToJsonElement(
+                            com.google.jetstream.data.remote.TmdbService.CreditsResponse.serializer(),
+                            it
+                        )
+                    )
+                }
+                contentRating?.let {
+                    put("tmdb_certification", JsonPrimitive(it))
+                }
+                put(
+                    "tmdb_similar",
+                    Json.encodeToJsonElement(
+                        kotlinx.serialization.builtins.ListSerializer(
+                            com.google.jetstream.data.remote.TmdbService.SimilarItem.serializer()
+                        ),
+                        similar.take(10)
+                    )
+                )
+                // 添加本地集数信息
+                put("local_episode_count", JsonPrimitive(localEpisodeCount))
+            }
+            
+            return Movie(
+                id = searchItem.id.toString(),
+                videoUri = videoUri,
+                subtitleUri = null,
+                posterUri = searchItem.posterPathOrNull()?.let { "https://image.tmdb.org/t/p/w500$it" } ?: "",
+                name = searchItem.name ?: searchItem.title ?: "",
+                description = Json.encodeToString<Map<String, JsonElement>>(fullDetailsJson), // 临时存储详情信息
+                releaseDate = searchItem.firstAirDate,
+                rating = searchItem.voteAverage
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "获取TMDB电视剧详情失败: ${e.message}")
+            // 如果获取详情失败，返回基础信息
+            return Movie(
+                id = searchItem.id.toString(),
+                videoUri = videoUri,
+                subtitleUri = null,
+                posterUri = searchItem.posterPathOrNull()?.let { "https://image.tmdb.org/t/p/w500$it" } ?: "",
+                name = searchItem.name ?: searchItem.title ?: "",
+                description = searchItem.overview ?: "",
+                releaseDate = searchItem.firstAirDate,
+                rating = searchItem.voteAverage
+            )
+        }
+    }
     
     /**
      * 从Movie对象创建ScrapedItemEntity，包含完整的详情信息
@@ -408,57 +473,128 @@ class DashboardViewModel @Inject constructor(
             }
             
             if (detailsMap != null) {
-                // 解析TMDB详情信息
-                val tmdbDetails = detailsMap["tmdb_details"]?.let {
-                    try { Json.decodeFromJsonElement(TmdbService.MovieDetailsResponse.serializer(), it) } catch (e: Exception) { null }
-                }
-                val tmdbCredits = detailsMap["tmdb_credits"]?.let {
-                    try { Json.decodeFromJsonElement(TmdbService.CreditsResponse.serializer(), it) } catch (e: Exception) { null }
-                }
-                val certification = detailsMap["tmdb_certification"]?.let { el ->
-                    el.jsonPrimitive.contentOrNull
-                }
-                val similar = detailsMap["tmdb_similar"]?.let { el ->
-                    try { Json.decodeFromJsonElement(ListSerializer(TmdbService.SimilarItem.serializer()), el) } catch (e: Exception) { emptyList() }
-                } ?: emptyList()
-                
-                // 构建详情字段
-                val categories = tmdbDetails?.genres?.map { it.name } ?: emptyList()
-                val castAndCrew = tmdbCredits?.cast?.take(10)?.map {
-                    MovieCast(
-                        id = it.id.toString(),
-                        characterName = it.character ?: "",
-                        realName = it.name,
-                        avatarUrl = it.profilePath?.let { p -> TmdbService.IMAGE_BASE_W500 + p } ?: ""
+                if (type == "tv") {
+                    // 处理电视剧详情
+                    val tmdbTvDetails = detailsMap["tmdb_details"]?.let {
+                        try { Json.decodeFromJsonElement(TmdbService.TvDetailsResponse.serializer(), it) } catch (e: Exception) { null }
+                    }
+                    val tmdbCredits = detailsMap["tmdb_credits"]?.let {
+                        try { Json.decodeFromJsonElement(TmdbService.CreditsResponse.serializer(), it) } catch (e: Exception) { null }
+                    }
+                    val certification = detailsMap["tmdb_certification"]?.let { el ->
+                        el.jsonPrimitive.contentOrNull
+                    }
+                    val similar = detailsMap["tmdb_similar"]?.let { el ->
+                        try { Json.decodeFromJsonElement(ListSerializer(TmdbService.SimilarItem.serializer()), el) } catch (e: Exception) { emptyList() }
+                    } ?: emptyList()
+                    val localEpisodeCount = detailsMap["local_episode_count"]?.let { el ->
+                        try { el.jsonPrimitive.content.toIntOrNull() } catch (e: Exception) { null }
+                    } ?: 0
+                    
+                    // 构建电视剧详情字段
+                    val categories = tmdbTvDetails?.genres?.map { mapGenreToChinese(it.name) } ?: emptyList()
+                    val castAndCrew = tmdbCredits?.cast?.take(10)?.map {
+                        MovieCast(
+                            id = it.id.toString(),
+                            characterName = it.character ?: "",
+                            realName = it.name,
+                            avatarUrl = it.profilePath?.let { p -> TmdbService.IMAGE_BASE_W500 + p } ?: ""
+                        )
+                    } ?: emptyList()
+                    
+                    // 电视剧的创作人员处理
+                    val creator = tmdbTvDetails?.createdBy?.firstOrNull()?.name ?: ""
+                    val director = tmdbCredits?.crew?.firstOrNull { it.job.equals("Director", true) }?.name ?: creator
+                    val screenplay = tmdbCredits?.crew?.firstOrNull { it.job?.contains("Writer", true) == true || it.job?.contains("Screenplay", true) == true }?.name ?: ""
+                    val music = tmdbCredits?.crew?.firstOrNull { it.job?.contains("Music", true) == true || it.job?.contains("Composer", true) == true }?.name ?: ""
+                    
+                    // 电视剧时长处理：显示总集数和库中集数
+                    fun createTvDurationText(tmdbDetails: TmdbService.TvDetailsResponse?, localEpisodeCount: Int): String {
+                        val totalEpisodes = tmdbDetails?.numberOfEpisodes ?: 0
+                        return if (totalEpisodes > 0 && localEpisodeCount > 0) {
+                            "共${totalEpisodes}集（库中有${localEpisodeCount}集）"
+                        } else if (totalEpisodes > 0) {
+                            "共${totalEpisodes}集"
+                        } else if (localEpisodeCount > 0) {
+                            "库中有${localEpisodeCount}集"
+                        } else {
+                            ""
+                        }
+                    }
+                    
+                    val ratingText = tmdbTvDetails?.voteAverage?.let { String.format("⭐ %.1f", it) } ?: "⭐ --"
+                    
+                    ScrapedItemEntity(
+                        id = movie.id,
+                        title = tmdbTvDetails?.name ?: movie.name,
+                        description = tmdbTvDetails?.overview ?: movie.description,
+                        posterUri = movie.posterUri,
+                        releaseDate = movie.releaseDate,
+                        rating = movie.rating,
+                        type = type,
+                        sourcePath = movie.videoUri.ifBlank { null },
+                        backdropUri = tmdbTvDetails?.backdropPath?.let { TmdbService.IMAGE_BASE_W780 + it },
+                        pgRating = ratingText,
+                        categories = if (categories.isNotEmpty()) Json.encodeToString(categories) else null,
+                        duration = createTvDurationText(tmdbTvDetails, localEpisodeCount),
+                        director = director,
+                        screenplay = screenplay,
+                        music = music,
+                        castAndCrew = if (castAndCrew.isNotEmpty()) Json.encodeToString(castAndCrew) else null
                     )
-                } ?: emptyList()
-                
-                val director = tmdbCredits?.crew?.firstOrNull { it.job.equals("Director", true) }?.name ?: ""
-                val screenplay = tmdbCredits?.crew?.firstOrNull { it.job?.contains("Writer", true) == true || it.job?.contains("Screenplay", true) == true }?.name ?: ""
-                val music = tmdbCredits?.crew?.firstOrNull { it.job?.contains("Music", true) == true || it.job?.contains("Composer", true) == true }?.name ?: ""
-                
-                fun minutesToDuration(mins: Int?): String = if (mins == null || mins <= 0) "" else "${mins / 60}h ${mins % 60}m"
-                
-                val ratingText = tmdbDetails?.voteAverage?.let { String.format("⭐ %.1f", it) } ?: "⭐ --"
-                
-                ScrapedItemEntity(
-                    id = movie.id,
-                    title = tmdbDetails?.title ?: movie.name,
-                    description = tmdbDetails?.overview ?: movie.description,
-                    posterUri = movie.posterUri,
-                    releaseDate = movie.releaseDate,
-                    rating = movie.rating,
-                    type = type,
-                    sourcePath = movie.videoUri.ifBlank { null },
-                    backdropUri = tmdbDetails?.backdropPath?.let { TmdbService.IMAGE_BASE_W780 + it },
-                    pgRating = ratingText,
-                    categories = if (categories.isNotEmpty()) Json.encodeToString(categories) else null,
-                    duration = minutesToDuration(tmdbDetails?.runtime),
-                    director = director,
-                    screenplay = screenplay,
-                    music = music,
-                    castAndCrew = if (castAndCrew.isNotEmpty()) Json.encodeToString(castAndCrew) else null
-                )
+                } else {
+                    // 处理电影详情
+                    val tmdbDetails = detailsMap["tmdb_details"]?.let {
+                        try { Json.decodeFromJsonElement(TmdbService.MovieDetailsResponse.serializer(), it) } catch (e: Exception) { null }
+                    }
+                    val tmdbCredits = detailsMap["tmdb_credits"]?.let {
+                        try { Json.decodeFromJsonElement(TmdbService.CreditsResponse.serializer(), it) } catch (e: Exception) { null }
+                    }
+                    val certification = detailsMap["tmdb_certification"]?.let { el ->
+                        el.jsonPrimitive.contentOrNull
+                    }
+                    val similar = detailsMap["tmdb_similar"]?.let { el ->
+                        try { Json.decodeFromJsonElement(ListSerializer(TmdbService.SimilarItem.serializer()), el) } catch (e: Exception) { emptyList() }
+                    } ?: emptyList()
+                    
+                    // 构建电影详情字段
+                    val categories = tmdbDetails?.genres?.map { mapGenreToChinese(it.name) } ?: emptyList()
+                    val castAndCrew = tmdbCredits?.cast?.take(10)?.map {
+                        MovieCast(
+                            id = it.id.toString(),
+                            characterName = it.character ?: "",
+                            realName = it.name,
+                            avatarUrl = it.profilePath?.let { p -> TmdbService.IMAGE_BASE_W500 + p } ?: ""
+                        )
+                    } ?: emptyList()
+                    
+                    val director = tmdbCredits?.crew?.firstOrNull { it.job.equals("Director", true) }?.name ?: ""
+                    val screenplay = tmdbCredits?.crew?.firstOrNull { it.job?.contains("Writer", true) == true || it.job?.contains("Screenplay", true) == true }?.name ?: ""
+                    val music = tmdbCredits?.crew?.firstOrNull { it.job?.contains("Music", true) == true || it.job?.contains("Composer", true) == true }?.name ?: ""
+                    
+                    fun minutesToDuration(mins: Int?): String = if (mins == null || mins <= 0) "" else "${mins / 60}h ${mins % 60}m"
+                    
+                    val ratingText = tmdbDetails?.voteAverage?.let { String.format("⭐ %.1f", it) } ?: "⭐ --"
+                    
+                    ScrapedItemEntity(
+                        id = movie.id,
+                        title = tmdbDetails?.title ?: movie.name,
+                        description = tmdbDetails?.overview ?: movie.description,
+                        posterUri = movie.posterUri,
+                        releaseDate = movie.releaseDate,
+                        rating = movie.rating,
+                        type = type,
+                        sourcePath = movie.videoUri.ifBlank { null },
+                        backdropUri = tmdbDetails?.backdropPath?.let { TmdbService.IMAGE_BASE_W780 + it },
+                        pgRating = ratingText,
+                        categories = if (categories.isNotEmpty()) Json.encodeToString(categories) else null,
+                        duration = minutesToDuration(tmdbDetails?.runtime),
+                        director = director,
+                        screenplay = screenplay,
+                        music = music,
+                        castAndCrew = if (castAndCrew.isNotEmpty()) Json.encodeToString(castAndCrew) else null
+                    )
+                }
             } else {
                 // 如果没有详情信息，创建基础实体
                 ScrapedItemEntity(
@@ -489,6 +625,47 @@ class DashboardViewModel @Inject constructor(
     }
     
 
+
+    /**
+     * 将英文影片类型映射为中文
+     */
+    private fun mapGenreToChinese(englishGenre: String): String {
+        return when (englishGenre.lowercase()) {
+            "action" -> "动作"
+            "adventure" -> "冒险"
+            "animation" -> "动画"
+            "comedy" -> "喜剧"
+            "crime" -> "犯罪"
+            "documentary" -> "纪录片"
+            "drama" -> "剧情"
+            "family" -> "家庭"
+            "fantasy" -> "奇幻"
+            "history" -> "历史"
+            "horror" -> "恐怖"
+            "music" -> "音乐"
+            "mystery" -> "悬疑"
+            "romance" -> "爱情"
+            "science fiction", "sci-fi" -> "科幻"
+            "tv movie" -> "电视电影"
+            "thriller" -> "惊悚"
+            "war" -> "战争"
+            "western" -> "西部"
+            "biography" -> "传记"
+            "sport" -> "体育"
+            "musical" -> "音乐剧"
+            "short" -> "短片"
+            "news" -> "新闻"
+            "reality" -> "真人秀"
+            "talk" -> "脱口秀"
+            // 电视剧特有类型
+            "action & adventure" -> "动作冒险"
+            "sci-fi & fantasy" -> "科幻奇幻"
+            "soap" -> "肥皂剧"
+            "kids" -> "儿童"
+            "war & politics" -> "战争政治"
+            else -> englishGenre // 如果没有匹配的，返回原文
+        }
+    }
 
     companion object {
         private const val TAG = "RefreshScraper"
@@ -521,34 +698,84 @@ private object TmdbApi {
         @SerialName("vote_average") val voteAverage: Float? = null,
     )
 
-    suspend fun search(path: String, query: String, extra: Map<String, String> = emptyMap()): SearchResponse? = withContext(Dispatchers.IO) {
-        try {
-            if (query.isBlank()) return@withContext null
-            val lang = "zh-CN"
-            val params = buildString {
-                append("query=").append(URLEncoder.encode(query, "UTF-8"))
-                append("&language=").append(lang)
-                append("&page=1")
-                for ((k, v) in extra) {
-                    append("&").append(k).append("=").append(URLEncoder.encode(v, "UTF-8"))
+    private fun createTrustAllTrustManager(): Array<javax.net.ssl.TrustManager> {
+        return arrayOf(object : javax.net.ssl.X509TrustManager {
+            override fun checkClientTrusted(chain: Array<java.security.cert.X509Certificate>, authType: String) {}
+            override fun checkServerTrusted(chain: Array<java.security.cert.X509Certificate>, authType: String) {}
+            override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> = arrayOf()
+        })
+    }
+
+    suspend fun search(path: String, query: String, extra: Map<String, String> = emptyMap(), retryCount: Int = 3): SearchResponse? = withContext(Dispatchers.IO) {
+        if (query.isBlank()) return@withContext null
+        
+        repeat(retryCount) { attempt ->
+            try {
+                val lang = "zh-CN"
+                val params = buildString {
+                    append("query=").append(URLEncoder.encode(query, "UTF-8"))
+                    append("&language=").append(lang)
+                    append("&page=1")
+                    for ((k, v) in extra) {
+                        append("&").append(k).append("=").append(URLEncoder.encode(v, "UTF-8"))
+                    }
                 }
+                val url = URL("$BASE$path?$params")
+                val conn = url.openConnection() as HttpURLConnection
+                
+                // 如果是HTTPS连接，配置SSL
+                if (conn is javax.net.ssl.HttpsURLConnection) {
+                    try {
+                        val sslContext = javax.net.ssl.SSLContext.getInstance("TLS")
+                        sslContext.init(null, createTrustAllTrustManager(), java.security.SecureRandom())
+                        conn.sslSocketFactory = sslContext.socketFactory
+                        conn.hostnameVerifier = javax.net.ssl.HostnameVerifier { _, _ -> true }
+                    } catch (e: Exception) {
+                        Log.w("TmdbApi", "Failed to configure SSL, using default: ${e.message}")
+                    }
+                }
+                
+                conn.apply {
+                    requestMethod = "GET"
+                    setRequestProperty("Authorization", "Bearer $BEARER")
+                    setRequestProperty("Accept", "application/json")
+                    setRequestProperty("User-Agent", "JetStream-Android/1.0")
+                    connectTimeout = 15000
+                    readTimeout = 15000
+                }
+                
+                val responseCode = conn.responseCode
+                if (responseCode == 200) {
+                    return@withContext conn.inputStream.bufferedReader().use { r ->
+                        val txt = r.readText()
+                        json.decodeFromString<SearchResponse>(txt)
+                    }
+                } else if (responseCode == 429) {
+                    // Rate limited, wait and retry
+                    Log.w("TmdbApi", "Rate limited for '$query', retrying in ${(attempt + 1) * 1000}ms")
+                    kotlinx.coroutines.delay((attempt + 1) * 1000L)
+                } else {
+                    Log.w("TmdbApi", "HTTP $responseCode for '$query' (attempt ${attempt + 1})")
+                    conn.errorStream?.bufferedReader()?.use { r -> 
+                        Log.w("TmdbApi", "Error response: ${r.readText()}")
+                    }
+                    if (responseCode in 400..499 && responseCode != 429) {
+                        // Client error, no point retrying
+                        return@withContext null
+                    }
+                }
+                conn.disconnect()
+            } catch (e: Exception) {
+                Log.w("TmdbApi", "search failed for '$query' (attempt ${attempt + 1}): ${e.message}")
+                if (attempt == retryCount - 1) {
+                    e.printStackTrace()
+                    return@withContext null
+                }
+                // Wait before retry
+                kotlinx.coroutines.delay((attempt + 1) * 1000L)
             }
-            val url = URL("$BASE$path?$params")
-            val conn = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                setRequestProperty("Authorization", "Bearer $BEARER")
-                setRequestProperty("Accept", "application/json")
-                connectTimeout = 10000
-                readTimeout = 10000
-            }
-            conn.inputStream.bufferedReader().use { r ->
-                val txt = r.readText()
-                return@withContext json.decodeFromString<SearchResponse>(txt)
-            }
-        } catch (e: Exception) {
-            Log.w("TmdbApi", "search failed for '$query': ${e.message}")
-            null
         }
+        null
     }
 }
 
