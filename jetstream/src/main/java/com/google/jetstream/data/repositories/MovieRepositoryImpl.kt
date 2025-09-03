@@ -21,6 +21,7 @@ import com.google.jetstream.data.entities.MovieCategoryDetails
 import com.google.jetstream.data.entities.MovieCast
 import com.google.jetstream.data.entities.MovieDetails
 import com.google.jetstream.data.entities.MovieList
+import com.google.jetstream.data.entities.TvSeason
 import com.google.jetstream.data.entities.MovieReviewsAndRatings
 import com.google.jetstream.data.entities.ThumbnailType
 import com.google.jetstream.data.remote.TmdbService
@@ -131,6 +132,10 @@ class MovieRepositoryImpl @Inject constructor(
             try { json.decodeFromString<List<MovieCast>>(it) } catch (e: Exception) { emptyList() }
         } ?: emptyList()
         
+        val availableSeasons = scrapedItem.availableSeasons?.let {
+            try { json.decodeFromString<List<TvSeason>>(it) } catch (e: Exception) { emptyList() }
+        } ?: emptyList()
+        
         // 根据类型设置默认类别
         val defaultCategory = when (scrapedItem.type) {
             "tv" -> "电视剧"
@@ -154,6 +159,8 @@ class MovieRepositoryImpl @Inject constructor(
             screenplay = scrapedItem.screenplay ?: "",
             music = scrapedItem.music ?: "",
             castAndCrew = castAndCrew,
+            availableSeasons = availableSeasons,
+            isTV = scrapedItem.type == "tv"
         )
     }
     

@@ -16,6 +16,19 @@
 
 package com.google.jetstream.data.entities
 
+import kotlinx.serialization.Serializable
+
+/**
+ * 电视剧季信息
+ */
+@Serializable
+data class TvSeason(
+    val number: Int,
+    val name: String,
+    val episodeCount: Int,
+    val webDavPath: String = "" // WebDAV中该季的路径
+)
+
 data class MovieDetails(
     val id: String,
     val videoUri: String,
@@ -32,4 +45,7 @@ data class MovieDetails(
     val screenplay: String,
     val music: String,
     val castAndCrew: List<MovieCast>,
+    // 电视剧季信息
+    val availableSeasons: List<TvSeason> = emptyList(),
+    val isTV: Boolean = false
 )

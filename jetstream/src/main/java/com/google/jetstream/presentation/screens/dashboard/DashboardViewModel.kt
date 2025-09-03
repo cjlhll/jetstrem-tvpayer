@@ -176,12 +176,17 @@ class DashboardViewModel @Inject constructor(
                         if (matched != null) break
                     }
                     matched?.let { m ->
-                        // 计算库中的集数
-                        val localEpisodeCount = files.size
+                        // 检测季结构
+                        val seasons = detectSeasonsInDirectory(path, folders, files)
+                        val localEpisodeCount = if (seasons.isNotEmpty()) {
+                            seasons.sumOf { it.episodeCount }
+                        } else {
+                            files.size
+                        }
                         // 获取完整的TMDB电视剧详情信息
-                        val tvWithDetails = createTvWithFullDetails(m, "", localEpisodeCount)
+                        val tvWithDetails = createTvWithFullDetails(m, "", localEpisodeCount, seasons)
                         aggregatedTv.add(tvWithDetails)
-                        Log.i(TAG, "剧集目录匹配: $folderTitleRaw -> ${m.name ?: m.title} (${m.id})，库中${localEpisodeCount}集")
+                        Log.i(TAG, "剧集目录匹配: $folderTitleRaw -> ${m.name ?: m.title} (${m.id})，库中${localEpisodeCount}集，${seasons.size}季")
                     }
                 } else {
                     // 文件逐个尝试电影匹配
@@ -390,7 +395,7 @@ class DashboardViewModel @Inject constructor(
     /**
      * 根据TMDB搜索结果创建包含完整详情的电视剧Movie对象
      */
-    private suspend fun createTvWithFullDetails(searchItem: TmdbApi.SearchItem, videoUri: String, localEpisodeCount: Int = 0): Movie {
+    private suspend fun createTvWithFullDetails(searchItem: TmdbApi.SearchItem, videoUri: String, localEpisodeCount: Int = 0, seasons: List<com.google.jetstream.data.entities.TvSeason> = emptyList()): Movie {
         try {
             // 获取完整的TMDB电视剧详情信息
             val details = TmdbService.getTvDetails(searchItem.id.toString())
@@ -432,6 +437,10 @@ class DashboardViewModel @Inject constructor(
                 )
                 // 添加本地集数信息
                 put("local_episode_count", JsonPrimitive(localEpisodeCount))
+                // 添加季信息
+                if (seasons.isNotEmpty()) {
+                    put("available_seasons", Json.encodeToJsonElement(kotlinx.serialization.builtins.ListSerializer(com.google.jetstream.data.entities.TvSeason.serializer()), seasons))
+                }
             }
             
             return Movie(
@@ -490,6 +499,9 @@ class DashboardViewModel @Inject constructor(
                     val localEpisodeCount = detailsMap["local_episode_count"]?.let { el ->
                         try { el.jsonPrimitive.content.toIntOrNull() } catch (e: Exception) { null }
                     } ?: 0
+                    val availableSeasons = detailsMap["available_seasons"]?.let { el ->
+                        try { Json.decodeFromJsonElement(kotlinx.serialization.builtins.ListSerializer(com.google.jetstream.data.entities.TvSeason.serializer()), el) } catch (e: Exception) { emptyList() }
+                    } ?: emptyList()
                     
                     // 构建电视剧详情字段
                     val categories = tmdbTvDetails?.genres?.map { mapGenreToChinese(it.name) } ?: emptyList()
@@ -540,7 +552,8 @@ class DashboardViewModel @Inject constructor(
                         director = director,
                         screenplay = screenplay,
                         music = music,
-                        castAndCrew = if (castAndCrew.isNotEmpty()) Json.encodeToString(castAndCrew) else null
+                        castAndCrew = if (castAndCrew.isNotEmpty()) Json.encodeToString(castAndCrew) else null,
+                        availableSeasons = if (availableSeasons.isNotEmpty()) Json.encodeToString(availableSeasons) else null
                     )
                 } else {
                     // 处理电影详情
@@ -625,6 +638,127 @@ class DashboardViewModel @Inject constructor(
     }
     
 
+
+    /**
+     * 检测目录中的季结构
+     */
+    private suspend fun detectSeasonsInDirectory(
+        currentPath: String, 
+        folders: List<com.thegrizzlylabs.sardineandroid.DavResource>, 
+        files: List<com.thegrizzlylabs.sardineandroid.DavResource>
+    ): List<com.google.jetstream.data.entities.TvSeason> {
+        val seasons = mutableListOf<com.google.jetstream.data.entities.TvSeason>()
+        
+        // 检查是否有季文件夹（如 Season 1, S01, 第一季等）
+        val seasonFolders = folders.filter { folder ->
+            val folderName = folder.name.substringAfterLast('/').removeSuffix("/")
+            isSeasonFolder(folderName)
+        }
+        
+        if (seasonFolders.isNotEmpty()) {
+            // 有季文件夹结构
+            for (seasonFolder in seasonFolders) {
+                val folderName = seasonFolder.name.substringAfterLast('/').removeSuffix("/")
+                val seasonNumber = extractSeasonNumber(folderName)
+                if (seasonNumber > 0) {
+                    // 获取该季的集数
+                    val seasonPath = if (currentPath.isBlank()) folderName else "$currentPath/$folderName"
+                    val episodeCount = countEpisodesInSeason(seasonPath)
+                    
+                    seasons.add(
+                        com.google.jetstream.data.entities.TvSeason(
+                            number = seasonNumber,
+                            name = formatSeasonName(seasonNumber),
+                            episodeCount = episodeCount,
+                            webDavPath = seasonPath
+                        )
+                    )
+                }
+            }
+        } else if (files.isNotEmpty()) {
+            // 没有季文件夹，但有视频文件，默认为第1季
+            seasons.add(
+                com.google.jetstream.data.entities.TvSeason(
+                    number = 1,
+                    name = "第1季",
+                    episodeCount = files.size,
+                    webDavPath = currentPath
+                )
+            )
+        }
+        
+        return seasons.sortedBy { it.number }
+    }
+    
+    /**
+     * 判断文件夹是否是季文件夹
+     */
+    private fun isSeasonFolder(folderName: String): Boolean {
+        val lowerName = folderName.lowercase()
+        return lowerName.matches(Regex("season\\s*\\d+")) ||
+               lowerName.matches(Regex("s\\d+")) ||
+               lowerName.matches(Regex("第\\d+季")) ||
+               lowerName.matches(Regex("第[一二三四五六七八九十]+季"))
+    }
+    
+    /**
+     * 从文件夹名提取季号
+     */
+    private fun extractSeasonNumber(folderName: String): Int {
+        val lowerName = folderName.lowercase()
+        
+        // Season 1, Season 01 等格式
+        Regex("season\\s*(\\d+)").find(lowerName)?.let { match ->
+            return match.groupValues[1].toIntOrNull() ?: 0
+        }
+        
+        // S1, S01 等格式
+        Regex("s(\\d+)").find(lowerName)?.let { match ->
+            return match.groupValues[1].toIntOrNull() ?: 0
+        }
+        
+        // 第1季等格式
+        Regex("第(\\d+)季").find(lowerName)?.let { match ->
+            return match.groupValues[1].toIntOrNull() ?: 0
+        }
+        
+        // 第一季等中文数字格式
+        val chineseNumbers = mapOf(
+            "一" to 1, "二" to 2, "三" to 3, "四" to 4, "五" to 5,
+            "六" to 6, "七" to 7, "八" to 8, "九" to 9, "十" to 10
+        )
+        Regex("第([一二三四五六七八九十]+)季").find(lowerName)?.let { match ->
+            return chineseNumbers[match.groupValues[1]] ?: 0
+        }
+        
+        return 0
+    }
+    
+    /**
+     * 格式化季名称
+     */
+    private fun formatSeasonName(seasonNumber: Int): String {
+        return "第${seasonNumber}季"
+    }
+    
+    /**
+     * 统计季中的集数
+     */
+    private suspend fun countEpisodesInSeason(seasonPath: String): Int {
+        return try {
+            when (val result = webDavService.listDirectory(seasonPath)) {
+                is WebDavResult.Success -> {
+                    result.data.count { resource ->
+                        !resource.isDirectory && isEpisodeFile(resource.name)
+                    }
+                }
+                else -> 0
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "统计季集数失败: $seasonPath", e)
+            0
+        }
+    }
 
     /**
      * 将英文影片类型映射为中文

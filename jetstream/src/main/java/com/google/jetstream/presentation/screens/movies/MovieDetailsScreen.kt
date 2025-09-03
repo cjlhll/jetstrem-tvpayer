@@ -124,6 +124,39 @@ private fun Details(
             )
         }
 
+        // 电视剧季选择器 - 只要是电视剧就显示，包括只有一季的情况
+        if (movieDetails.isTV) {
+            item {
+                val seasons = if (movieDetails.availableSeasons.isNotEmpty()) {
+                    movieDetails.availableSeasons.map { tvSeason ->
+                        Season(
+                            number = tvSeason.number,
+                            displayName = tvSeason.name,
+                            episodeCount = tvSeason.episodeCount
+                        )
+                    }
+                } else {
+                    // 如果没有季信息，默认显示第1季
+                    listOf(
+                        Season(
+                            number = 1,
+                            displayName = "第1季",
+                            episodeCount = 0
+                        )feat
+                    )
+                }
+                
+                SeasonSelector(
+                    seasons = seasons,
+                    selectedSeason = seasons.firstOrNull(),
+                    onSeasonSelected = { season ->
+                        // TODO: 处理季选择逻辑
+                        // 可以通过回调通知上层组件切换到选中的季
+                    }
+                )
+            }
+        }
+
         item {
             CastAndCrewList(
                 castAndCrew = movieDetails.castAndCrew

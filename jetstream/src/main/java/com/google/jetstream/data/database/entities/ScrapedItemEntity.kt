@@ -23,6 +23,7 @@ data class ScrapedItemEntity(
     val director: String? = null,
     val screenplay: String? = null,
     val music: String? = null,
-    val castAndCrew: String? = null // JSON字符串存储演员列表
+    val castAndCrew: String? = null, // JSON字符串存储演员列表
+    val availableSeasons: String? = null // JSON字符串存储季信息
 )
 

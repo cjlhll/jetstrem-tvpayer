@@ -35,7 +35,7 @@ import com.google.jetstream.data.database.entities.ScrapedItemEntity
         ResourceDirectoryEntity::class,
         ScrapedItemEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class JetStreamDatabase : RoomDatabase() {
@@ -108,13 +108,20 @@ abstract class JetStreamDatabase : RoomDatabase() {
             }
         }
         
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // 添加 availableSeasons 字段到 scraped_items 表
+                database.execSQL("ALTER TABLE scraped_items ADD COLUMN availableSeasons TEXT")
+            }
+        }
+        
         fun getDatabase(context: Context): JetStreamDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     JetStreamDatabase::class.java,
                     "jetstream_database"
-                ).addMigrations(MIGRATION_2_3, MIGRATION_3_4)
+                ).addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance
