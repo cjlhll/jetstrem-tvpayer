@@ -142,7 +142,7 @@ private fun Details(
                             number = 1,
                             displayName = "第1季",
                             episodeCount = 0
-                        )feat
+                        )
                     )
                 }
                 
