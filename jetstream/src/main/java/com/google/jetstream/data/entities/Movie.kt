@@ -27,6 +27,7 @@ data class Movie(
     val description: String,
     val releaseDate: String? = null,
     val rating: Float? = null,
+    val watchProgress: Float? = null, // 观看进度，0.0 到 1.0
 )
 
 fun MoviesResponseItem.toMovie(thumbnailType: ThumbnailType = ThumbnailType.Standard): Movie {
@@ -40,7 +41,8 @@ fun MoviesResponseItem.toMovie(thumbnailType: ThumbnailType = ThumbnailType.Stan
         subtitleUri,
         thumbnail,
         title,
-        fullTitle
+        fullTitle,
+        watchProgress = null // 默认无进度，可以后续从其他数据源获取
     )
 }
 

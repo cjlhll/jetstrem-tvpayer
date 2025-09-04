@@ -24,6 +24,7 @@ import com.google.jetstream.data.entities.MovieDetails
 import android.util.Base64
 import com.google.jetstream.data.webdav.WebDavService
 import com.google.jetstream.data.repositories.MovieRepository
+import com.google.jetstream.data.repositories.RecentlyWatchedRepository
 import com.google.jetstream.data.database.dao.ScrapedItemDao
 import com.google.jetstream.data.database.dao.WebDavConfigDao
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -32,11 +33,13 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 @HiltViewModel
 class VideoPlayerScreenViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val repository: MovieRepository,
+    private val recentlyWatchedRepository: RecentlyWatchedRepository,
     private val scrapedItemDao: ScrapedItemDao,
     private val webDavService: WebDavService,
     private val webDavConfigDao: WebDavConfigDao,
@@ -62,6 +65,21 @@ class VideoPlayerScreenViewModel @Inject constructor(
             mapOf("Authorization" to "Basic $token")
         } else emptyMap()
     }
+    
+    /**
+     * 添加电影到最近观看记录
+     */
+    fun addToRecentlyWatched(movieDetails: MovieDetails) {
+        viewModelScope.launch {
+            try {
+                recentlyWatchedRepository.addRecentlyWatched(movieDetails)
+                android.util.Log.d("VideoPlayerVM", "Added to recently watched: ${movieDetails.name}")
+            } catch (e: Exception) {
+                android.util.Log.e("VideoPlayerVM", "Failed to add to recently watched", e)
+            }
+        }
+    }
+    
     // 基本认证请求头（若运行时未配置，会从数据库读取最近配置）
     lateinit var headers: Map<String, String>
 
@@ -86,6 +104,7 @@ class VideoPlayerScreenViewModel @Inject constructor(
                 val webdavUri = entity?.sourcePath
                 val detailsWithUri = if (!webdavUri.isNullOrBlank()) details.copy(videoUri = webdavUri) else details
                 android.util.Log.i("VideoPlayerVM", "movieId=$id, finalPlayUri=${detailsWithUri.videoUri}")
+                
                 VideoPlayerScreenUiState.Done(movieDetails = detailsWithUri)
             }
         }.stateIn(

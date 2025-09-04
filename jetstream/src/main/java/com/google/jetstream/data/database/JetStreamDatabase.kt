@@ -25,17 +25,20 @@ import android.content.Context
 import com.google.jetstream.data.database.dao.ResourceDirectoryDao
 import com.google.jetstream.data.database.dao.WebDavConfigDao
 import com.google.jetstream.data.database.dao.ScrapedItemDao
+import com.google.jetstream.data.database.dao.RecentlyWatchedDao
 import com.google.jetstream.data.database.entities.ResourceDirectoryEntity
 import com.google.jetstream.data.database.entities.WebDavConfigEntity
 import com.google.jetstream.data.database.entities.ScrapedItemEntity
+import com.google.jetstream.data.database.entities.RecentlyWatchedEntity
 
 @Database(
     entities = [
         WebDavConfigEntity::class,
         ResourceDirectoryEntity::class,
-        ScrapedItemEntity::class
+        ScrapedItemEntity::class,
+        RecentlyWatchedEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class JetStreamDatabase : RoomDatabase() {
@@ -43,6 +46,7 @@ abstract class JetStreamDatabase : RoomDatabase() {
     abstract fun webDavConfigDao(): WebDavConfigDao
     abstract fun resourceDirectoryDao(): ResourceDirectoryDao
     abstract fun scrapedItemDao(): ScrapedItemDao
+    abstract fun recentlyWatchedDao(): RecentlyWatchedDao
     
     companion object {
         @Volatile
@@ -115,13 +119,36 @@ abstract class JetStreamDatabase : RoomDatabase() {
             }
         }
         
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // 删除旧的recently_watched表（如果存在）并创建新的表结构
+                database.execSQL("DROP TABLE IF EXISTS recently_watched")
+                
+                // 创建新的recently_watched表
+                database.execSQL("""
+                    CREATE TABLE recently_watched (
+                        movieId TEXT NOT NULL PRIMARY KEY,
+                        movieTitle TEXT NOT NULL,
+                        backdropUri TEXT NOT NULL,
+                        posterUri TEXT NOT NULL,
+                        description TEXT NOT NULL,
+                        releaseDate TEXT,
+                        rating REAL,
+                        type TEXT NOT NULL,
+                        lastWatchedAt INTEGER NOT NULL,
+                        watchProgress REAL
+                    )
+                """)
+            }
+        }
+        
         fun getDatabase(context: Context): JetStreamDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     JetStreamDatabase::class.java,
                     "jetstream_database"
-                ).addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                ).addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance

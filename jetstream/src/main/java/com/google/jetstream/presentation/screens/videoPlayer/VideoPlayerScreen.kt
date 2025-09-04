@@ -88,7 +88,11 @@ fun VideoPlayerScreen(
             VideoPlayerScreenContent(
                 movieDetails = s.movieDetails,
                 onBackPressed = onBackPressed,
-                headers = videoPlayerScreenViewModel.headers
+                headers = videoPlayerScreenViewModel.headers,
+                onVideoStarted = {
+                    // 当视频实际开始播放时，记录到最近观看
+                    videoPlayerScreenViewModel.addToRecentlyWatched(s.movieDetails)
+                }
             )
         }
     }
@@ -96,7 +100,12 @@ fun VideoPlayerScreen(
 
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
-fun VideoPlayerScreenContent(movieDetails: MovieDetails, onBackPressed: () -> Unit, headers: Map<String, String>) {
+fun VideoPlayerScreenContent(
+    movieDetails: MovieDetails, 
+    onBackPressed: () -> Unit, 
+    headers: Map<String, String>,
+    onVideoStarted: () -> Unit = {}
+) {
     val context = LocalContext.current
     // 优先用 SurfaceView 以保证 HDR/色彩路径
 
@@ -136,6 +145,26 @@ fun VideoPlayerScreenContent(movieDetails: MovieDetails, onBackPressed: () -> Un
     LaunchedEffect(exoPlayer, movieDetails) {
         exoPlayer.addMediaItem(movieDetails.intoMediaItem())
         exoPlayer.prepare()
+    }
+    
+    // 监听播放状态，当开始播放时记录到最近观看
+    androidx.compose.runtime.DisposableEffect(exoPlayer) {
+        var hasStartedPlaying = false
+        val listener = object : androidx.media3.common.Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == androidx.media3.common.Player.STATE_READY && exoPlayer.playWhenReady && !hasStartedPlaying) {
+                    hasStartedPlaying = true
+                    onVideoStarted()
+                    android.util.Log.d("VideoPlayer", "Video started playing, adding to recently watched")
+                }
+            }
+        }
+        exoPlayer.addListener(listener)
+        onDispose {
+            try {
+                exoPlayer.removeListener(listener)
+            } catch (_: Throwable) {}
+        }
     }
 
     BackHandler(onBack = {

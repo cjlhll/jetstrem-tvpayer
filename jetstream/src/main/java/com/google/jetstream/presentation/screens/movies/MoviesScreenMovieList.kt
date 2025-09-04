@@ -20,6 +20,8 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -29,6 +31,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
@@ -40,6 +44,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -118,6 +123,8 @@ private fun MovieListItem(
     Column(modifier = Modifier.fillMaxSize()) {
         Spacer(modifier = Modifier.height(JetStreamBorderWidth))
         var isFocused by remember { mutableStateOf(false) }
+        
+        // 卡片部分
         CompactCard(
             modifier = modifier
                 .width(itemWidth)
@@ -143,46 +150,61 @@ private fun MovieListItem(
             ),
             onClick = { onMovieClick(movie) },
             image = {
-                val contentAlpha by animateFloatAsState(
-                    targetValue = if (isFocused) 1f else 0.5f,
-                    label = "",
-                )
-                AsyncImage(
-                    model = movie.posterUri,
-                    contentDescription = StringConstants
-                        .Composable
-                        .ContentDescription
-                        .moviePoster(movie.name),
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { alpha = contentAlpha }
-                )
-            },
-            title = {
-                Column {
-                    Text(
-                        text = movie.description,
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Normal
-                        ),
+                Box(modifier = Modifier.fillMaxSize()) {
+                    val contentAlpha by animateFloatAsState(
+                        targetValue = if (isFocused) 1f else 0.5f,
+                        label = "",
+                    )
+                    AsyncImage(
+                        model = movie.posterUri,
+                        contentDescription = StringConstants
+                            .Composable
+                            .ContentDescription
+                            .moviePoster(movie.name),
+                        contentScale = ContentScale.Crop,
                         modifier = Modifier
-                            .graphicsLayer { alpha = 0.6f }
-                            .padding(start = 24.dp)
+                            .fillMaxSize()
+                            .graphicsLayer { alpha = contentAlpha }
                     )
-                    Text(
-                        text = movie.name,
-                        style = MaterialTheme.typography.headlineSmall,
-                        modifier = Modifier.padding(
-                            start = 24.dp,
-                            end = 24.dp,
-                            bottom = 24.dp
-                        ),
-                        // TODO: Remove this when CardContent is not overriding contentColor anymore
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    
+                    // 进度条在卡片内部底部 - 带背景阴影更清晰
+                    val progress = movie.watchProgress ?: 0.6f // 临时设置默认进度为60%用于测试
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.BottomCenter)
+                            .padding(horizontal = 8.dp, vertical = 8.dp)
+                            .background(
+                                Color.Black.copy(alpha = 0.5f),
+                                RoundedCornerShape(4.dp)
+                            )
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        LinearProgressIndicator(
+                            progress = { progress },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp),
+                            color = Color.White,
+                            trackColor = Color.Gray.copy(alpha = 0.4f)
+                        )
+                    }
                 }
-            }
+            },
+            title = {}
+        )
+        
+        // 卡片外部下方的标题
+        Text(
+            text = movie.name,
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontWeight = FontWeight.Medium
+            ),
+            modifier = Modifier
+                .padding(top = 8.dp)
+                .width(itemWidth),
+            maxLines = 2,
+            color = MaterialTheme.colorScheme.onSurface
         )
     }
 }

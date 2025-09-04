@@ -109,6 +109,10 @@ private fun Catalog(
     // WebDAV 刮削的电视剧（以目录为单位）
     val scrapedTvVm: ScrapedTvViewModel = hiltViewModel()
     val scrapedTv by scrapedTvVm.shows.collectAsStateWithLifecycle()
+    
+    // 最近观看的电影
+    val recentlyWatchedVm: RecentlyWatchedViewModel = hiltViewModel()
+    val recentlyWatchedMovies by recentlyWatchedVm.recentlyWatchedMovies.collectAsStateWithLifecycle()
 
     val scraped by scrapedVm.movies.collectAsStateWithLifecycle()
 
@@ -126,12 +130,15 @@ private fun Catalog(
         modifier = modifier,
     ) {
 
-        item(contentType = "MoviesScreenMovieList") {
-            MoviesScreenMovieList(
-                movieList = moviesWithLongThumbnail,
-                title = "最近观看",
-                onMovieClick = onMovieClick
-            )
+        // 只有当有最近观看记录时才显示最近观看部分
+        if (recentlyWatchedMovies.isNotEmpty()) {
+            item(contentType = "MoviesScreenMovieList") {
+                MoviesScreenMovieList(
+                    movieList = recentlyWatchedMovies,
+                    title = "最近观看",
+                    onMovieClick = onMovieClick
+                )
+            }
         }
         item(contentType = "MoviesRow") {
             MoviesRow(

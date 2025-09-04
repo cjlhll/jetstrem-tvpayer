@@ -19,6 +19,7 @@ package com.google.jetstream.di
 import android.content.Context
 import com.google.jetstream.data.database.JetStreamDatabase
 import com.google.jetstream.data.database.dao.ResourceDirectoryDao
+import com.google.jetstream.data.database.dao.RecentlyWatchedDao
 import com.google.jetstream.data.database.dao.WebDavConfigDao
 import dagger.Module
 import dagger.Provides
@@ -50,5 +51,10 @@ object DatabaseModule {
     @Provides
     fun provideScrapedItemDao(database: JetStreamDatabase): com.google.jetstream.data.database.dao.ScrapedItemDao {
         return database.scrapedItemDao()
+    }
+
+    @Provides
+    fun provideRecentlyWatchedDao(database: JetStreamDatabase): RecentlyWatchedDao {
+        return database.recentlyWatchedDao()
     }
 }
