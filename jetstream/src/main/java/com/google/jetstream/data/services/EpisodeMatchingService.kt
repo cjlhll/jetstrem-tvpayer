@@ -59,11 +59,14 @@ class EpisodeMatchingService @Inject constructor(
 
             // 将TMDB剧集与本地文件进行匹配
             val matchedEpisodes = mutableListOf<Episode>()
+            val config = webDavService.getCurrentConfig()
+            val baseUrl = config?.getFormattedServerUrl()?.removeSuffix("/") ?: ""
+
             for (tmdbEpisode in seasonDetails.episodes) {
                 val matchedFile = findMatchingLocalFile(tmdbEpisode.episodeNumber, localFiles)
                 if (matchedFile != null) {
                     // 构造完整的视频文件URI
-                    val videoUri = localSeason.webDavPath.removeSuffix("/") + "/" + matchedFile.name
+                    val videoUri = baseUrl + matchedFile.path
 
                     // 创建包含本地文件信息的Episode对象
                     val episode = Episode(
