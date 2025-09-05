@@ -54,6 +54,7 @@ class MovieDetailsScreenViewModel @Inject constructor(
     private val webDavService: WebDavService,
     private val scrapedItemDao: ScrapedItemDao,
     private val recentlyWatchedRepository: RecentlyWatchedRepository,
+    private val episodeMatchingService: com.google.jetstream.data.services.EpisodeMatchingService,
 ) : ViewModel() {
     
     // 剧集列表状态
@@ -119,35 +120,50 @@ class MovieDetailsScreenViewModel @Inject constructor(
         )
     
     /**
-     * 获取指定季的剧集列表
+     * 获取指定季的剧集列表（只显示本地存在的剧集）
      */
     fun loadEpisodes(tvId: String, seasonNumber: Int) {
         viewModelScope.launch {
             _episodesState.value = EpisodesUiState.Loading
             try {
-                val seasonDetails = TmdbService.getTvSeasonDetails(tvId, seasonNumber)
-                if (seasonDetails != null) {
-                    val episodes = seasonDetails.episodes.map { episodeItem ->
-                        Episode(
-                            id = episodeItem.id.toString(),
-                            episodeNumber = episodeItem.episodeNumber,
-                            name = episodeItem.name ?: "第${episodeItem.episodeNumber}集",
-                            overview = episodeItem.overview ?: "",
-                            stillPath = episodeItem.stillPath,
-                            airDate = episodeItem.airDate,
-                            voteAverage = episodeItem.voteAverage,
-                            runtime = episodeItem.runtime,
-                            tvId = tvId,
-                            seasonNumber = seasonNumber
-                        )
-                    }
-                    _episodesState.value = EpisodesUiState.Success(episodes)
+                // 获取本地季信息
+                val localSeasons = getLocalSeasonsForTv(tvId)
+                
+                // 使用EpisodeMatchingService获取过滤后的剧集列表
+                val filteredEpisodes = episodeMatchingService.getFilteredEpisodes(
+                    tvId = tvId,
+                    seasonNumber = seasonNumber,
+                    localSeasons = localSeasons
+                )
+                
+                if (filteredEpisodes.isNotEmpty()) {
+                    _episodesState.value = EpisodesUiState.Success(filteredEpisodes)
                 } else {
-                    _episodesState.value = EpisodesUiState.Error("无法获取剧集信息")
+                    _episodesState.value = EpisodesUiState.Error("本地没有找到该季的剧集文件")
                 }
             } catch (e: Exception) {
                 _episodesState.value = EpisodesUiState.Error(e.message ?: "获取剧集信息失败")
             }
+        }
+    }
+    
+    /**
+     * 从数据库获取本地季信息
+     */
+    private suspend fun getLocalSeasonsForTv(tvId: String): List<com.google.jetstream.data.entities.TvSeason> {
+        return try {
+            val scrapedItem = scrapedItemDao.getById(tvId)
+            if (scrapedItem?.availableSeasons != null) {
+                kotlinx.serialization.json.Json.decodeFromString(
+                    kotlinx.serialization.builtins.ListSerializer(com.google.jetstream.data.entities.TvSeason.serializer()),
+                    scrapedItem.availableSeasons
+                )
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("MovieDetailsVM", "获取本地季信息失败: $tvId", e)
+            emptyList()
         }
     }
     

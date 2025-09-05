@@ -640,7 +640,7 @@ class DashboardViewModel @Inject constructor(
 
 
     /**
-     * 检测目录中的季结构
+     * 检测目录中的季结构（增强版，记录详细文件信息）
      */
     private suspend fun detectSeasonsInDirectory(
         currentPath: String, 
@@ -661,10 +661,11 @@ class DashboardViewModel @Inject constructor(
                 val folderName = seasonFolder.name.substringAfterLast('/').removeSuffix("/")
                 val seasonNumber = extractSeasonNumber(folderName)
                 if (seasonNumber > 0) {
-                    // 获取该季的集数
+                    // 获取该季的集数和详细文件信息
                     val seasonPath = if (currentPath.isBlank()) folderName else "$currentPath/$folderName"
                     val episodeCount = countEpisodesInSeason(seasonPath)
                     
+                    // 记录详细的季信息，包括WebDAV路径
                     seasons.add(
                         com.google.jetstream.data.entities.TvSeason(
                             number = seasonNumber,
@@ -673,18 +674,29 @@ class DashboardViewModel @Inject constructor(
                             webDavPath = seasonPath
                         )
                     )
+                    
+                    Log.d(TAG, "检测到季文件夹: $folderName -> 第${seasonNumber}季，路径: $seasonPath，集数: $episodeCount")
                 }
             }
         } else if (files.isNotEmpty()) {
             // 没有季文件夹，但有视频文件，默认为第1季
-            seasons.add(
-                com.google.jetstream.data.entities.TvSeason(
-                    number = 1,
-                    name = "第1季",
-                    episodeCount = files.size,
-                    webDavPath = currentPath
+            val episodeFiles = files.filter { !it.isDirectory && isEpisodeFile(it.name) }
+            if (episodeFiles.isNotEmpty()) {
+                seasons.add(
+                    com.google.jetstream.data.entities.TvSeason(
+                        number = 1,
+                        name = "第1季",
+                        episodeCount = episodeFiles.size,
+                        webDavPath = currentPath
+                    )
                 )
-            )
+                
+                Log.d(TAG, "检测到单季结构: 路径: $currentPath，集数: ${episodeFiles.size}")
+                // 记录文件列表用于调试
+                episodeFiles.forEach { file ->
+                    Log.v(TAG, "  剧集文件: ${file.name}")
+                }
+            }
         }
         
         return seasons.sortedBy { it.number }
