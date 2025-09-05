@@ -37,6 +37,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.google.jetstream.data.entities.Episode
 import com.google.jetstream.presentation.screens.dashboard.rememberChildPadding
+import com.google.jetstream.presentation.common.MediaCard
 
 /**
  * 剧集列表组件
@@ -82,10 +83,13 @@ fun EpisodeList(
                     horizontalArrangement = Arrangement.spacedBy(20.dp)
                 ) {
                     items(episodes) { episode ->
-                        EpisodeCard(
-                            episode = episode,
+                        MediaCard(
+                            imageUrl = episode.getStillImageUrl() ?: "",
+                            title = "第${episode.episodeNumber}集",
+                            subtitle = if (episode.name.isNotBlank()) episode.name else null,
                             itemWidth = 180.dp, // 与最近观看卡片相同的宽度
-                            onEpisodeClick = onEpisodeClick
+                            contentDescription = "第${episode.episodeNumber}集 ${episode.name}",
+                            onClick = { onEpisodeClick(episode) }
                         )
                     }
                 }

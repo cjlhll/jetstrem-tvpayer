@@ -17,71 +17,30 @@
 package com.google.jetstream.presentation.screens.movies
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRestorer
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.tv.material3.Border
-import androidx.tv.material3.CardDefaults
-import androidx.tv.material3.CompactCard
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import coil.compose.AsyncImage
 import com.google.jetstream.data.entities.Movie
 import com.google.jetstream.data.util.StringConstants
 import com.google.jetstream.presentation.screens.dashboard.rememberChildPadding
-import com.google.jetstream.presentation.theme.JetStreamBorderWidth
+import com.google.jetstream.presentation.common.MediaCard
 
-/**
- * 将毫秒转换为时间格式字符串 (mm:ss 或 h:mm:ss)
- */
-private fun formatTime(milliseconds: Long): String {
-    val totalSeconds = milliseconds / 1000
-    val hours = totalSeconds / 3600
-    val minutes = (totalSeconds % 3600) / 60
-    val seconds = totalSeconds % 60
-    
-    return if (hours > 0) {
-        String.format("%d:%02d:%02d", hours, minutes, seconds)
-    } else {
-        String.format("%02d:%02d", minutes, seconds)
-    }
-}
+
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -119,133 +78,22 @@ fun MoviesScreenMovieList(
                 contentPadding = PaddingValues(start = startPadding, end = endPadding),
                 horizontalArrangement = Arrangement.spacedBy(20.dp)
             ) {
-                items(movieListTarget) {
-                    MovieListItem(
-                        itemWidth = 180.dp,
-                        onMovieClick = onMovieClick,
-                        movie = it,
-                    )
-                }
+                items(movieListTarget) { movie ->
+                MediaCard(
+                    imageUrl = movie.posterUri,
+                    title = movie.name,
+                    itemWidth = 180.dp,
+                    watchProgress = movie.watchProgress,
+                    currentPositionMs = movie.currentPositionMs,
+                    durationMs = movie.durationMs,
+                    contentDescription = StringConstants
+                        .Composable
+                        .ContentDescription
+                        .moviePoster(movie.name),
+                    onClick = { onMovieClick(movie) }
+                )
+            }
             }
         }
-    }
-}
-
-@Composable
-private fun MovieListItem(
-    itemWidth: Dp,
-    movie: Movie,
-    modifier: Modifier = Modifier,
-    onMovieClick: (movie: Movie) -> Unit
-) {
-    Column(modifier = Modifier.fillMaxSize()) {
-        Spacer(modifier = Modifier.height(JetStreamBorderWidth))
-        var isFocused by remember { mutableStateOf(false) }
-        
-        // 卡片部分
-        CompactCard(
-            modifier = modifier
-                .width(itemWidth)
-                .aspectRatio(1.6f)
-                .onFocusChanged { isFocused = it.isFocused || it.hasFocus },
-            scale = CardDefaults.scale(focusedScale = 1.1f),
-            glow = CardDefaults.glow(
-                focusedGlow = androidx.tv.material3.Glow(
-                    elevationColor = MaterialTheme.colorScheme.onSurface,
-                    elevation = 16.dp
-                )
-            ),
-            border = CardDefaults.border(
-                focusedBorder = Border(
-                    border = BorderStroke(
-                        width = JetStreamBorderWidth, color = MaterialTheme.colorScheme.onSurface
-                    )
-                )
-            ),
-            colors = CardDefaults.colors(
-                containerColor = Color.Transparent,
-                contentColor = MaterialTheme.colorScheme.onSurface,
-            ),
-            onClick = { onMovieClick(movie) },
-            image = {
-                Box(modifier = Modifier.fillMaxSize()) {
-                    val contentAlpha by animateFloatAsState(
-                        targetValue = if (isFocused) 1f else 0.5f,
-                        label = "",
-                    )
-                    AsyncImage(
-                        model = movie.posterUri,
-                        contentDescription = StringConstants
-                            .Composable
-                            .ContentDescription
-                            .moviePoster(movie.name),
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer { alpha = contentAlpha }
-                    )
-                    
-                    // 显示进度条和时间（仅当有观看进度时）
-                    movie.watchProgress?.let { progress ->
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .align(Alignment.BottomCenter)
-                                .background(
-                                    brush = Brush.verticalGradient(
-                                        colors = listOf(
-                                            Color.Transparent,
-                                            Color.Black.copy(alpha = 0.8f)
-                                        ),
-                                        startY = 0f,
-                                        endY = Float.POSITIVE_INFINITY
-                                    )
-                                )
-                                .padding(horizontal = 8.dp, vertical = 8.dp)
-                        ) {
-                            // 时间显示在上方，右对齐
-                            val currentTime = movie.currentPositionMs?.let { formatTime(it) } ?: "00:00"
-                            val totalTime = movie.durationMs?.let { formatTime(it) } ?: "00:00"
-                            
-                            Text(
-                                text = "$currentTime / $totalTime",
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Medium
-                                ),
-                                color = Color.White,
-                                modifier = Modifier
-                                    .align(Alignment.End)
-                                    .padding(bottom = 4.dp)
-                            )
-                            
-                            // 进度条在下方
-                            LinearProgressIndicator(
-                                progress = { progress },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(3.dp),
-                                color = Color.White,
-                                trackColor = Color.Gray.copy(alpha = 0.4f)
-                            )
-                        }
-                    }
-                }
-            },
-            title = {}
-        )
-        
-        // 卡片外部下方的标题
-        Text(
-            text = movie.name,
-            style = MaterialTheme.typography.bodyMedium.copy(
-                fontWeight = FontWeight.Medium
-            ),
-            modifier = Modifier
-                .padding(top = 8.dp)
-                .width(itemWidth),
-            maxLines = 2,
-            color = MaterialTheme.colorScheme.onSurface
-        )
     }
 }
