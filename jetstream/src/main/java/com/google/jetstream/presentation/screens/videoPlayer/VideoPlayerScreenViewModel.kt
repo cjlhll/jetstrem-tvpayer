@@ -105,6 +105,100 @@ class VideoPlayerScreenViewModel @Inject constructor(
     }
     
     /**
+     * 保存当前播放剧集的进度（根据episodeId获取剧集信息）
+     */
+    fun saveCurrentEpisodeProgress(
+        movieDetails: MovieDetails,
+        episodeId: String,
+        currentPositionMs: Long,
+        durationMs: Long
+    ) {
+        viewModelScope.launch {
+            try {
+                android.util.Log.d("VideoPlayerVM", "开始保存剧集进度: episodeId=$episodeId, position=${currentPositionMs}ms")
+                
+                // 首先尝试从历史记录中获取剧集信息（最可靠的方式）
+                val recentlyWatched = recentlyWatchedRepository.getRecentlyWatchedByMovieId(movieDetails.id)
+                if (recentlyWatched != null && recentlyWatched.episodeId == episodeId && 
+                    recentlyWatched.episodeNumber != null && recentlyWatched.seasonNumber != null) {
+                    // 使用历史记录中的剧集信息
+                    android.util.Log.d("VideoPlayerVM", "使用历史记录中的剧集信息: 第${recentlyWatched.seasonNumber}季第${recentlyWatched.episodeNumber}集")
+                    saveEpisodeWatchProgress(
+                        movieDetails = movieDetails,
+                        episodeId = episodeId,
+                        episodeNumber = recentlyWatched.episodeNumber,
+                        seasonNumber = recentlyWatched.seasonNumber,
+                        episodeTitle = recentlyWatched.episodeTitle ?: "第${recentlyWatched.episodeNumber}集",
+                        currentPositionMs = currentPositionMs,
+                        durationMs = durationMs
+                    )
+                    return@launch
+                }
+                
+                // 如果历史记录不可用，尝试通过当前UI状态获取剧集信息
+                val currentUiState = uiState.value
+                if (currentUiState is VideoPlayerScreenUiState.Done && currentUiState.episodeId == episodeId) {
+                    // 从当前播放的剧集信息中推断
+                    android.util.Log.d("VideoPlayerVM", "尝试从播放信息推断剧集详情")
+                    
+                    // 解析剧集标题来获取季号和集号
+                    val episodeInfo = parseEpisodeInfoFromTitle(movieDetails.name)
+                    if (episodeInfo != null) {
+                        android.util.Log.d("VideoPlayerVM", "从标题解析剧集信息: 第${episodeInfo.first}季第${episodeInfo.second}集")
+                        saveEpisodeWatchProgress(
+                            movieDetails = movieDetails,
+                            episodeId = episodeId,
+                            episodeNumber = episodeInfo.second,
+                            seasonNumber = episodeInfo.first,
+                            episodeTitle = "第${episodeInfo.second}集",
+                            currentPositionMs = currentPositionMs,
+                            durationMs = durationMs
+                        )
+                        return@launch
+                    }
+                }
+                
+                // 最后的兜底方案：使用默认值
+                android.util.Log.w("VideoPlayerVM", "无法获取详细剧集信息，使用默认值保存: episodeId=$episodeId")
+                saveEpisodeWatchProgress(
+                    movieDetails = movieDetails,
+                    episodeId = episodeId,
+                    episodeNumber = 1,
+                    seasonNumber = 1,
+                    episodeTitle = "第1集",
+                    currentPositionMs = currentPositionMs,
+                    durationMs = durationMs
+                )
+                
+            } catch (e: Exception) {
+                android.util.Log.e("VideoPlayerVM", "保存当前剧集进度失败", e)
+                // 回退到基础保存方法
+                saveWatchProgress(movieDetails, currentPositionMs, durationMs)
+            }
+        }
+    }
+    
+    /**
+     * 从电视剧标题中解析季号和集号
+     * 返回 Pair(seasonNumber, episodeNumber) 或 null
+     */
+    private fun parseEpisodeInfoFromTitle(title: String): Pair<Int, Int>? {
+        try {
+            // 匹配 "剧名 - 第X季第Y集" 格式
+            val seasonEpisodeRegex = Regex("第(\\d+)季第(\\d+)集")
+            val match = seasonEpisodeRegex.find(title)
+            if (match != null) {
+                val seasonNumber = match.groupValues[1].toInt()
+                val episodeNumber = match.groupValues[2].toInt()
+                return Pair(seasonNumber, episodeNumber)
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("VideoPlayerVM", "解析剧集标题失败: $title", e)
+        }
+        return null
+    }
+    
+    /**
      * 保存电视剧剧集播放进度
      */
     fun saveEpisodeWatchProgress(
@@ -165,11 +259,9 @@ class VideoPlayerScreenViewModel @Inject constructor(
     ): String {
         try {
             // 如果有本地季信息，尝试从中获取具体的剧集文件路径
-            if (entity?.availableSeasons != null) {
-                val seasons = kotlinx.serialization.json.Json.decodeFromString(
-                    kotlinx.serialization.builtins.ListSerializer(com.google.jetstream.data.entities.TvSeason.serializer()),
-                    entity.availableSeasons
-                )
+              if (entity?.availableSeasons != null) {
+                  val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+                  val seasons = json.decodeFromString<List<com.google.jetstream.data.entities.TvSeason>>(entity.availableSeasons)
                 
                 val targetSeason = seasons.find { it.number == seasonNumber }
                 if (targetSeason != null) {
@@ -276,6 +368,7 @@ class VideoPlayerScreenViewModel @Inject constructor(
             } else {
                 // 获取剧集ID（如果有）
                 val episodeId = savedStateHandle.get<String?>(VideoPlayerScreen.EpisodeIdBundleKey)
+                val validEpisodeId = if (episodeId == "null" || episodeId.isNullOrBlank()) null else episodeId
                 
                 val details = repository.getMovieDetails(movieId = movieId)
                 // 若数据库有对应的 WebDAV 源路径，则将其填入 videoUri 用于播放
@@ -289,8 +382,8 @@ class VideoPlayerScreenViewModel @Inject constructor(
                 } catch (_: Exception) { null }
                 
                 // 如果是电视剧且指定了剧集ID，获取剧集播放信息
-                if (detailsWithUri.isTV && !episodeId.isNullOrBlank()) {
-                    android.util.Log.i("VideoPlayerVM", "播放电视剧剧集: movieId=$movieId, episodeId=$episodeId")
+                if (detailsWithUri.isTV && validEpisodeId != null) {
+                    android.util.Log.i("VideoPlayerVM", "播放电视剧剧集: movieId=$movieId, episodeId=$validEpisodeId")
                     
                     // 获取剧集播放信息
                     val playbackInfo = try {
@@ -300,7 +393,7 @@ class VideoPlayerScreenViewModel @Inject constructor(
                         null
                     }
                     
-                    if (playbackInfo != null && playbackInfo.episode.id == episodeId) {
+                    if (playbackInfo != null && playbackInfo.episode.id == validEpisodeId) {
                         // 构建剧集播放URL（基于季和集数）
                         val episodeVideoUri = buildEpisodeVideoUri(
                             baseUri = detailsWithUri.videoUri,
@@ -319,14 +412,14 @@ class VideoPlayerScreenViewModel @Inject constructor(
                         VideoPlayerScreenUiState.Done(
                             movieDetails = episodeDetails,
                             startPositionMs = playbackInfo.startPositionMs,
-                            episodeId = episodeId
+                            episodeId = validEpisodeId
                         )
                     } else {
                         android.util.Log.w("VideoPlayerVM", "无法获取剧集播放信息，使用默认设置")
                         VideoPlayerScreenUiState.Done(
                             movieDetails = detailsWithUri,
                             startPositionMs = recentlyWatched?.currentPositionMs,
-                            episodeId = episodeId
+                            episodeId = validEpisodeId
                         )
                     }
                 } else {

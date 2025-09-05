@@ -98,7 +98,7 @@ fun App(
                 val movieIdArg = backStackEntry.arguments?.getString(MovieDetailsScreen.MovieIdBundleKey) ?: ""
                 MovieDetailsScreen(
                     goToMoviePlayer = {
-                        navController.navigate(Screens.VideoPlayer.withArgs(movieIdArg))
+                        navController.navigate(Screens.VideoPlayer.withArgs(movieIdArg, "null"))
                     },
                     goToEpisodePlayer = { tvId, episodeId ->
                         navController.navigate(Screens.VideoPlayer.withArgs(tvId, episodeId))

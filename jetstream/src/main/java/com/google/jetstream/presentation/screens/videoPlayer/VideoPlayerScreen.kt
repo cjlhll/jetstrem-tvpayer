@@ -93,11 +93,34 @@ fun VideoPlayerScreen(
                 headers = videoPlayerScreenViewModel.headers,
                 onVideoStarted = {
                     // 当视频实际开始播放时，记录到最近观看
-                    videoPlayerScreenViewModel.addToRecentlyWatched(s.movieDetails)
+                    if (s.movieDetails.isTV && s.episodeId != null) {
+                        // 电视剧：保存剧集信息到最近观看
+                        videoPlayerScreenViewModel.saveCurrentEpisodeProgress(
+                            movieDetails = s.movieDetails,
+                            episodeId = s.episodeId,
+                            currentPositionMs = 0L, // 刚开始播放
+                            durationMs = 0L // 开始时还不知道总时长
+                        )
+                    } else {
+                        // 电影：使用原有逻辑
+                        videoPlayerScreenViewModel.addToRecentlyWatched(s.movieDetails)
+                    }
                 },
                 onSaveProgress = { currentPositionMs, durationMs ->
-                    // 保存播放进度
-                    videoPlayerScreenViewModel.saveWatchProgress(s.movieDetails, currentPositionMs, durationMs)
+                    // 根据内容类型保存播放进度
+                    if (s.movieDetails.isTV && s.episodeId != null) {
+                        // 电视剧：需要保存剧集信息
+                        // 从TvPlaybackService获取当前播放的剧集信息
+                        videoPlayerScreenViewModel.saveCurrentEpisodeProgress(
+                            movieDetails = s.movieDetails,
+                            episodeId = s.episodeId,
+                            currentPositionMs = currentPositionMs,
+                            durationMs = durationMs
+                        )
+                    } else {
+                        // 电影：使用原有逻辑
+                        videoPlayerScreenViewModel.saveWatchProgress(s.movieDetails, currentPositionMs, durationMs)
+                    }
                 }
             )
         }

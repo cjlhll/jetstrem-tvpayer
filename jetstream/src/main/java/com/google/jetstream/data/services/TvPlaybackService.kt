@@ -44,31 +44,42 @@ class TvPlaybackService @Inject constructor(
         try {
             // 检查是否有播放历史记录
             val recentlyWatched = recentlyWatchedDao.getByMovieId(tvId)
+            Log.d(TAG, "检查播放历史: tvId=$tvId, 历史记录=${recentlyWatched != null}")
             
-            if (recentlyWatched != null && recentlyWatched.episodeId != null) {
-                // 有历史记录，尝试恢复上次观看的剧集
-                Log.d(TAG, "找到播放历史: 第${recentlyWatched.seasonNumber}季第${recentlyWatched.episodeNumber}集")
+            if (recentlyWatched != null) {
+                Log.d(TAG, "历史记录详情: episodeId=${recentlyWatched.episodeId}, seasonNumber=${recentlyWatched.seasonNumber}, episodeNumber=${recentlyWatched.episodeNumber}, position=${recentlyWatched.currentPositionMs}ms")
                 
-                val resumeEpisode = findEpisodeById(
-                    tvId = tvId,
-                    episodeId = recentlyWatched.episodeId,
-                    seasonNumber = recentlyWatched.seasonNumber ?: 1,
-                    episodeNumber = recentlyWatched.episodeNumber ?: 1,
-                    movieDetails = movieDetails
-                )
-                
-                if (resumeEpisode != null) {
-                    return PlaybackInfo(
-                        episode = resumeEpisode,
-                        startPositionMs = recentlyWatched.currentPositionMs ?: 0L,
-                        isResuming = true
+                // 如果有剧集相关信息，尝试续播
+                if (recentlyWatched.episodeId != null && recentlyWatched.seasonNumber != null && recentlyWatched.episodeNumber != null) {
+                    Log.d(TAG, "尝试续播: 第${recentlyWatched.seasonNumber}季第${recentlyWatched.episodeNumber}集")
+                    
+                    val resumeEpisode = findEpisodeById(
+                        tvId = tvId,
+                        episodeId = recentlyWatched.episodeId,
+                        seasonNumber = recentlyWatched.seasonNumber,
+                        episodeNumber = recentlyWatched.episodeNumber,
+                        movieDetails = movieDetails
                     )
+                    
+                    if (resumeEpisode != null) {
+                        Log.d(TAG, "续播成功: 第${resumeEpisode.seasonNumber}季第${resumeEpisode.episodeNumber}集, 起始位置: ${recentlyWatched.currentPositionMs}ms")
+                        return PlaybackInfo(
+                            episode = resumeEpisode,
+                            startPositionMs = recentlyWatched.currentPositionMs ?: 0L,
+                            isResuming = true
+                        )
+                    } else {
+                        Log.w(TAG, "续播失败: 无法找到历史记录中的剧集")
+                    }
                 } else {
-                    Log.w(TAG, "无法找到历史记录中的剧集，将从第一集开始播放")
+                    Log.d(TAG, "历史记录不完整，缺少剧集信息")
                 }
+            } else {
+                Log.d(TAG, "没有找到播放历史记录")
             }
             
             // 没有历史记录或无法恢复，从第一集开始
+            Log.d(TAG, "开始查找第一集")
             val firstEpisode = getFirstAvailableEpisode(tvId, movieDetails)
             if (firstEpisode != null) {
                 Log.d(TAG, "从第一集开始播放: 第${firstEpisode.seasonNumber}季第${firstEpisode.episodeNumber}集")
@@ -184,16 +195,20 @@ class TvPlaybackService @Inject constructor(
     private suspend fun getLocalSeasonsForTv(tvId: String): List<com.google.jetstream.data.entities.TvSeason> {
         return try {
             val scrapedItem = scrapedItemDao.getById(tvId)
+            Log.d(TAG, "获取刮削项: tvId=$tvId, scrapedItem=${scrapedItem != null}, availableSeasons=${scrapedItem?.availableSeasons}")
+            
             if (scrapedItem?.availableSeasons != null) {
-                kotlinx.serialization.json.Json.decodeFromString(
-                    kotlinx.serialization.builtins.ListSerializer(com.google.jetstream.data.entities.TvSeason.serializer()),
-                    scrapedItem.availableSeasons
-                )
+                // 使用kotlinx.serialization解析
+                val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+                val seasons = json.decodeFromString<List<com.google.jetstream.data.entities.TvSeason>>(scrapedItem.availableSeasons)
+                Log.d(TAG, "解析季信息成功: 共${seasons.size}季")
+                seasons
             } else {
+                Log.w(TAG, "没有找到季信息: tvId=$tvId")
                 emptyList()
             }
         } catch (e: Exception) {
-            Log.w(TAG, "获取本地季信息失败: $tvId", e)
+            Log.e(TAG, "获取本地季信息失败: $tvId", e)
             emptyList()
         }
     }

@@ -375,12 +375,15 @@ private fun getPlayButtonText(
     val timeText = formatTimeFromMs(recentlyWatched.currentPositionMs)
     
     return if (movieDetails.isTV) {
-        // 电视剧：播放 第X集 24:34
-        // TODO: 这里需要从播放记录中获取集数信息，暂时先显示第1集
-        "播放 第1集 $timeText"
+        // 电视剧：显示具体的剧集信息
+        if (recentlyWatched.episodeNumber != null && recentlyWatched.seasonNumber != null) {
+            "续播 第${recentlyWatched.seasonNumber}季第${recentlyWatched.episodeNumber}集 $timeText"
+        } else {
+            "续播 $timeText"
+        }
     } else {
         // 电影：播放 24:34
-        "播放 $timeText"
+        "续播 $timeText"
     }
 }
 
