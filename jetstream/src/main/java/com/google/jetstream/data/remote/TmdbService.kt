@@ -143,6 +143,31 @@ object TmdbService {
         val rating: String? = null
     )
 
+    // 季详情响应
+    @Serializable
+    data class SeasonDetailsResponse(
+        val id: Int,
+        @SerialName("season_number") val seasonNumber: Int,
+        val name: String? = null,
+        val overview: String? = null,
+        @SerialName("poster_path") val posterPath: String? = null,
+        @SerialName("air_date") val airDate: String? = null,
+        val episodes: List<EpisodeItem> = emptyList()
+    )
+
+    // 剧集信息
+    @Serializable
+    data class EpisodeItem(
+        val id: Int,
+        @SerialName("episode_number") val episodeNumber: Int,
+        val name: String? = null,
+        val overview: String? = null,
+        @SerialName("still_path") val stillPath: String? = null,
+        @SerialName("air_date") val airDate: String? = null,
+        @SerialName("vote_average") val voteAverage: Float? = null,
+        val runtime: Int? = null
+    )
+
     suspend fun getMovieDetails(id: String, language: String = "zh-CN"): MovieDetailsResponse? =
         get("/3/movie/${id}", mapOf("language" to language))?.let {
             try { json.decodeFromString(MovieDetailsResponse.serializer(), it) } catch (e: Exception) {
@@ -210,6 +235,14 @@ object TmdbService {
                 cn?.rating ?: us?.rating
             } catch (e: Exception) {
                 Log.w(TAG, "decode content_ratings failed: ${e.message}"); null
+            }
+        }
+
+    // 获取电视剧季详情和剧集列表
+    suspend fun getTvSeasonDetails(tvId: String, seasonNumber: Int, language: String = "zh-CN"): SeasonDetailsResponse? =
+        get("/3/tv/${tvId}/season/${seasonNumber}", mapOf("language" to language))?.let {
+            try { json.decodeFromString(SeasonDetailsResponse.serializer(), it) } catch (e: Exception) {
+                Log.w(TAG, "decode season details failed: ${e.message}"); null
             }
         }
 

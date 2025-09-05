@@ -37,6 +37,12 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import android.net.Uri
 import java.io.File
+import com.google.jetstream.data.entities.Episode
+import com.google.jetstream.data.remote.TmdbService
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 
 @HiltViewModel
@@ -49,6 +55,10 @@ class MovieDetailsScreenViewModel @Inject constructor(
     private val scrapedItemDao: ScrapedItemDao,
     private val recentlyWatchedRepository: RecentlyWatchedRepository,
 ) : ViewModel() {
+    
+    // 剧集列表状态
+    private val _episodesState = MutableStateFlow<EpisodesUiState>(EpisodesUiState.Loading)
+    val episodesState: StateFlow<EpisodesUiState> = _episodesState.asStateFlow()
     val uiState = savedStateHandle
         .getStateFlow<String?>(MovieDetailsScreen.MovieIdBundleKey, null)
         .map { id ->
@@ -107,6 +117,46 @@ class MovieDetailsScreenViewModel @Inject constructor(
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = MovieDetailsScreenUiState.Loading
         )
+    
+    /**
+     * 获取指定季的剧集列表
+     */
+    fun loadEpisodes(tvId: String, seasonNumber: Int) {
+        viewModelScope.launch {
+            _episodesState.value = EpisodesUiState.Loading
+            try {
+                val seasonDetails = TmdbService.getTvSeasonDetails(tvId, seasonNumber)
+                if (seasonDetails != null) {
+                    val episodes = seasonDetails.episodes.map { episodeItem ->
+                        Episode(
+                            id = episodeItem.id.toString(),
+                            episodeNumber = episodeItem.episodeNumber,
+                            name = episodeItem.name ?: "第${episodeItem.episodeNumber}集",
+                            overview = episodeItem.overview ?: "",
+                            stillPath = episodeItem.stillPath,
+                            airDate = episodeItem.airDate,
+                            voteAverage = episodeItem.voteAverage,
+                            runtime = episodeItem.runtime,
+                            tvId = tvId,
+                            seasonNumber = seasonNumber
+                        )
+                    }
+                    _episodesState.value = EpisodesUiState.Success(episodes)
+                } else {
+                    _episodesState.value = EpisodesUiState.Error("无法获取剧集信息")
+                }
+            } catch (e: Exception) {
+                _episodesState.value = EpisodesUiState.Error(e.message ?: "获取剧集信息失败")
+            }
+        }
+    }
+    
+    /**
+     * 清空剧集列表
+     */
+    fun clearEpisodes() {
+        _episodesState.value = EpisodesUiState.Loading
+    }
 }
 
 sealed class MovieDetailsScreenUiState {
@@ -117,4 +167,10 @@ sealed class MovieDetailsScreenUiState {
         val fileSizeBytes: Long? = null,
         val recentlyWatched: com.google.jetstream.data.database.entities.RecentlyWatchedEntity? = null
     ) : MovieDetailsScreenUiState()
+}
+
+sealed class EpisodesUiState {
+    data object Loading : EpisodesUiState()
+    data class Success(val episodes: List<Episode>) : EpisodesUiState()
+    data class Error(val message: String) : EpisodesUiState()
 }

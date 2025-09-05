@@ -52,11 +52,17 @@ import androidx.tv.material3.MaterialTheme
 import com.google.jetstream.R
 import com.google.jetstream.data.entities.Movie
 import com.google.jetstream.data.entities.MovieDetails
+import com.google.jetstream.data.entities.Episode
 import com.google.jetstream.data.util.StringConstants
 import com.google.jetstream.presentation.common.Error
 import com.google.jetstream.presentation.common.Loading
 import com.google.jetstream.presentation.common.MoviesRow
 import com.google.jetstream.presentation.screens.dashboard.rememberChildPadding
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 
 object MovieDetailsScreen {
     const val MovieIdBundleKey = "movieId"
@@ -88,6 +94,7 @@ fun MovieDetailsScreen(
                 goToMoviePlayer = { goToMoviePlayer(s.movieDetails.id) },
                 onBackPressed = onBackPressed,
                 refreshScreenWithNewMovie = refreshScreenWithNewMovie,
+                movieDetailsScreenViewModel = movieDetailsScreenViewModel,
                 modifier = Modifier
                     .fillMaxSize()
                     .animateContentSize()
@@ -105,7 +112,13 @@ private fun Details(
     onBackPressed: () -> Unit,
     refreshScreenWithNewMovie: (Movie) -> Unit,
     modifier: Modifier = Modifier,
+    movieDetailsScreenViewModel: MovieDetailsScreenViewModel = hiltViewModel()
 ) {
+    // 剧集状态
+    val episodesState by movieDetailsScreenViewModel.episodesState.collectAsStateWithLifecycle()
+    
+    // 当前选中的季
+    var selectedSeasonNumber by remember { mutableStateOf(1) }
     val childPadding = rememberChildPadding()
 
     val playButtonFocusRequester = FocusRequester()
@@ -149,14 +162,47 @@ private fun Details(
                     )
                 }
                 
+                // 初始化时加载第一季的剧集
+                LaunchedEffect(movieDetails.id) {
+                    if (seasons.isNotEmpty()) {
+                        selectedSeasonNumber = seasons.first().number
+                        movieDetailsScreenViewModel.loadEpisodes(movieDetails.id, selectedSeasonNumber)
+                    }
+                }
+                
                 SeasonSelector(
                     seasons = seasons,
-                    selectedSeason = seasons.firstOrNull(),
+                    selectedSeason = seasons.find { it.number == selectedSeasonNumber },
                     onSeasonSelected = { season ->
-                        // TODO: 处理季选择逻辑
-                        // 可以通过回调通知上层组件切换到选中的季
+                        selectedSeasonNumber = season.number
+                        movieDetailsScreenViewModel.loadEpisodes(movieDetails.id, season.number)
                     }
                 )
+            }
+            
+            // 剧集列表
+            item {
+                val currentEpisodesState = episodesState
+                when (currentEpisodesState) {
+                    is EpisodesUiState.Loading -> {
+                        // 可以显示加载状态，这里暂时不显示
+                    }
+                    is EpisodesUiState.Success -> {
+                        if (currentEpisodesState.episodes.isNotEmpty()) {
+                            EpisodeList(
+                                episodeList = currentEpisodesState.episodes,
+                                title = "第${selectedSeasonNumber}季剧集",
+                                onEpisodeClick = { episode ->
+                                    // TODO: 处理剧集点击，可以跳转到播放页面
+                                    // 这里可以根据需要实现剧集播放逻辑
+                                }
+                            )
+                        }
+                    }
+                    is EpisodesUiState.Error -> {
+                        // 可以显示错误状态，这里暂时不显示
+                    }
+                }
             }
         }
 
