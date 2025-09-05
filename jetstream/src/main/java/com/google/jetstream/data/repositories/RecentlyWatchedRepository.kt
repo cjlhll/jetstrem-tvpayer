@@ -11,7 +11,8 @@ import javax.inject.Singleton
 
 @Singleton
 class RecentlyWatchedRepository @Inject constructor(
-    private val recentlyWatchedDao: RecentlyWatchedDao
+    private val recentlyWatchedDao: RecentlyWatchedDao,
+    private val episodeMatchingService: com.google.jetstream.data.services.EpisodeMatchingService
 ) {
     
     /**
@@ -52,11 +53,21 @@ class RecentlyWatchedRepository @Inject constructor(
     fun getRecentlyWatchedMovies(limit: Int = 20): Flow<List<Movie>> {
         return recentlyWatchedDao.getRecentlyWatched(limit).map { entities ->
             entities.map { entity ->
+                // 对于电视剧，尝试获取当前播放集的封面
+                val posterUri = if (entity.type == "tv" && entity.episodeId != null && 
+                    entity.seasonNumber != null && entity.episodeNumber != null) {
+                    // 尝试获取剧集封面，如果失败则使用电视剧主封面
+                    getEpisodePosterUri(entity.movieId, entity.seasonNumber, entity.episodeNumber) 
+                        ?: entity.backdropUri
+                } else {
+                    entity.backdropUri // 电影或无剧集信息的电视剧使用背景图
+                }
+                
                 Movie(
                     id = entity.movieId,
                     videoUri = "", // VideoUri在播放时会从ScrapedItemEntity或其他源获取
                     subtitleUri = null,
-                    posterUri = entity.backdropUri, // 使用背景图作为海报显示
+                    posterUri = posterUri,
                     name = entity.movieTitle,
                     description = entity.description,
                     releaseDate = entity.releaseDate,
@@ -66,6 +77,22 @@ class RecentlyWatchedRepository @Inject constructor(
                     durationMs = entity.durationMs
                 )
             }
+        }
+    }
+    
+    /**
+     * 获取剧集封面URI
+     */
+    private suspend fun getEpisodePosterUri(tvId: String, seasonNumber: Int, episodeNumber: Int): String? {
+        return try {
+            val seasonDetails = com.google.jetstream.data.remote.TmdbService.getTvSeasonDetails(tvId, seasonNumber)
+            val episode = seasonDetails?.episodes?.find { it.episodeNumber == episodeNumber }
+            episode?.stillPath?.let { stillPath ->
+                "https://image.tmdb.org/t/p/w500$stillPath"
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("RecentlyWatchedRepo", "获取剧集封面失败: tvId=$tvId, S${seasonNumber}E${episodeNumber}", e)
+            null
         }
     }
     

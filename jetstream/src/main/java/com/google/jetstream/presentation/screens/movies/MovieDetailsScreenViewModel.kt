@@ -138,13 +138,46 @@ class MovieDetailsScreenViewModel @Inject constructor(
                 )
                 
                 if (filteredEpisodes.isNotEmpty()) {
-                    _episodesState.value = EpisodesUiState.Success(filteredEpisodes)
+                    // 为每个剧集添加播放进度信息
+                    val episodesWithProgress = addPlaybackProgressToEpisodes(tvId, filteredEpisodes)
+                    _episodesState.value = EpisodesUiState.Success(episodesWithProgress)
                 } else {
                     _episodesState.value = EpisodesUiState.Error("本地没有找到该季的剧集文件")
                 }
             } catch (e: Exception) {
                 _episodesState.value = EpisodesUiState.Error(e.message ?: "获取剧集信息失败")
             }
+        }
+    }
+    
+    /**
+     * 为剧集列表添加播放进度信息
+     */
+    private suspend fun addPlaybackProgressToEpisodes(tvId: String, episodes: List<Episode>): List<Episode> {
+        return try {
+            // 获取该电视剧的播放历史记录
+            val recentlyWatched = recentlyWatchedRepository.getRecentlyWatchedByMovieId(tvId)
+            
+            episodes.map { episode ->
+                // 检查当前剧集是否有播放记录
+                if (recentlyWatched != null && 
+                    recentlyWatched.episodeId == episode.id &&
+                    recentlyWatched.seasonNumber == episode.seasonNumber &&
+                    recentlyWatched.episodeNumber == episode.episodeNumber) {
+                    // 有播放记录，添加进度信息
+                    episode.copy(
+                        watchProgress = recentlyWatched.watchProgress,
+                        currentPositionMs = recentlyWatched.currentPositionMs,
+                        durationMs = recentlyWatched.durationMs ?: (episode.runtime?.let { it * 60 * 1000L })
+                    )
+                } else {
+                    // 没有播放记录，保持原样
+                    episode
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("MovieDetailsVM", "添加播放进度信息失败: tvId=$tvId", e)
+            episodes // 如果失败，返回原始列表
         }
     }
     
