@@ -32,7 +32,10 @@ data class Episode(
     val voteAverage: Float?,
     val runtime: Int?, // 运行时长（分钟）
     val tvId: String, // 所属电视剧ID
-    val seasonNumber: Int // 所属季号
+    val seasonNumber: Int, // 所属季号
+    val watchProgress: Float? = null, // 观看进度，0.0 到 1.0
+    val currentPositionMs: Long? = null, // 当前播放位置（毫秒）
+    val durationMs: Long? = null // 总时长（毫秒）
 ) {
     /**
      * 获取完整的剧集封面图片URL

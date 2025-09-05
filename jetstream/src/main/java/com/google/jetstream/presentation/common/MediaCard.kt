@@ -129,7 +129,7 @@ fun MediaCard(
             image = {
                 Box(modifier = Modifier.fillMaxSize()) {
                     val contentAlpha by animateFloatAsState(
-                        targetValue = if (isFocused) 1f else 0.5f,
+                        targetValue = 1f, // 默认都是亮色，不再根据焦点状态改变透明度
                         label = "",
                     )
                     AsyncImage(
@@ -141,8 +141,10 @@ fun MediaCard(
                             .graphicsLayer { alpha = contentAlpha }
                     )
                     
-                    // 显示进度条和时间（仅当有观看进度时）
-                    watchProgress?.let { progress ->
+                    // 显示进度条和时间信息
+                    // 如果有观看进度，显示进度条和当前时间/总时间
+                    // 如果没有观看进度但有总时长，只显示总时长
+                    if (watchProgress != null || durationMs != null) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -160,11 +162,18 @@ fun MediaCard(
                                 .padding(horizontal = 8.dp, vertical = 8.dp)
                         ) {
                             // 时间显示在上方，右对齐
-                            val currentTime = currentPositionMs?.let { formatTime(it) } ?: "00:00"
-                            val totalTime = durationMs?.let { formatTime(it) } ?: "00:00"
+                            val timeText = if (watchProgress != null) {
+                                // 有观看进度时显示：当前时间 / 总时间
+                                val currentTime = currentPositionMs?.let { formatTime(it) } ?: "00:00"
+                                val totalTime = durationMs?.let { formatTime(it) } ?: "00:00"
+                                "$currentTime / $totalTime"
+                            } else {
+                                // 没有观看进度时只显示总时间
+                                durationMs?.let { formatTime(it) } ?: "00:00"
+                            }
                             
                             Text(
-                                text = "$currentTime / $totalTime",
+                                text = timeText,
                                 style = MaterialTheme.typography.bodySmall.copy(
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Medium
@@ -172,18 +181,20 @@ fun MediaCard(
                                 color = Color.White,
                                 modifier = Modifier
                                     .align(Alignment.End)
-                                    .padding(bottom = 4.dp)
+                                    .padding(bottom = if (watchProgress != null) 4.dp else 0.dp)
                             )
                             
-                            // 进度条在下方
-                            LinearProgressIndicator(
-                                progress = { progress },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(3.dp),
-                                color = Color.White,
-                                trackColor = Color.Gray.copy(alpha = 0.4f)
-                            )
+                            // 进度条在下方（仅当有观看进度时显示）
+                            watchProgress?.let { progress ->
+                                LinearProgressIndicator(
+                                    progress = { progress },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(3.dp),
+                                    color = Color.White,
+                                    trackColor = Color.Gray.copy(alpha = 0.4f)
+                                )
+                            }
                         }
                     }
                 }

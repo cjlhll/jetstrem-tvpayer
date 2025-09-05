@@ -88,6 +88,9 @@ fun EpisodeList(
                             title = "第${episode.episodeNumber}集",
                             subtitle = if (episode.name.isNotBlank()) episode.name else null,
                             itemWidth = 180.dp, // 与最近观看卡片相同的宽度
+                            watchProgress = episode.watchProgress,
+                            currentPositionMs = episode.currentPositionMs,
+                            durationMs = episode.durationMs ?: (episode.runtime?.let { it * 60 * 1000L }), // 如果没有durationMs，从runtime转换
                             contentDescription = "第${episode.episodeNumber}集 ${episode.name}",
                             onClick = { onEpisodeClick(episode) }
                         )
