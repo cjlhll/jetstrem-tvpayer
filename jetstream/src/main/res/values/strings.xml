@@ -19,7 +19,7 @@ https://www.apache.org/licenses/LICENSE-2.0
     <string name="generic_error_msg">Couldn\'t get %1s. Reason: %2s</string>
     <string name="brand_logo_text">JET STREAM</string>
     <string name="watch_now">Watch Now</string>
-    <string name="cast_and_crew"><![CDATA[Cast & Crew]]></string>
+    <string name="cast_and_crew">演员表</string>
     <string name="director">Director</string>
     <string name="screenplay">Screenplay</string>
     <string name="music">Music</string>

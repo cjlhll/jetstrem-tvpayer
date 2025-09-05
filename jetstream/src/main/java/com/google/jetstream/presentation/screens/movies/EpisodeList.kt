@@ -69,20 +69,7 @@ fun EpisodeList(
         label = ""
     ) { episodes ->
         Column {
-            // 标题
-            title?.let {
-                Text(
-                    text = it,
-                    style = titleStyle,
-                    modifier = Modifier.padding(
-                        start = startPadding,
-                        top = 16.dp,
-                        bottom = 16.dp
-                    )
-                )
-            }
-            
-            // 剧集列表
+            // 移除标题显示，只显示剧集列表
             if (episodes.isNotEmpty()) {
                 LazyRow(
                     modifier = Modifier

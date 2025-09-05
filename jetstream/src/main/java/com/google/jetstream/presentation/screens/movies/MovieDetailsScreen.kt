@@ -206,6 +206,11 @@ private fun Details(
             }
         }
 
+        // 添加间距以改善视觉效果
+        item {
+            Box(modifier = Modifier.padding(top = 24.dp))
+        }
+
         item {
             CastAndCrewList(
                 castAndCrew = movieDetails.castAndCrew
