@@ -247,7 +247,7 @@ private fun MoviesRowItem(
 
     // 包一层 Column 保证在 LazyRow 的 RowScope 下，海报与文字垂直排列
     Column(
-        modifier = modifier.width(120.dp)
+        modifier = modifier.width(130.dp)
     ) {
         MovieCard(
             onClick = { onMovieSelected(movie) },
