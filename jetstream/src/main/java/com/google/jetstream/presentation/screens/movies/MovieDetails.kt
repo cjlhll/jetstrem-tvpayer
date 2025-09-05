@@ -70,7 +70,8 @@ fun MovieDetails(
     movieDetails: MovieDetails,
     // 可选：传入文件大小用于展示（由上层ViewModel通过WebDAV查询）
     fileSizeBytes: Long? = null,
-
+    // 播放记录信息
+    recentlyWatched: com.google.jetstream.data.database.entities.RecentlyWatchedEntity? = null,
     goToMoviePlayer: () -> Unit,
     focusRequester: FocusRequester? = null
 ) {
@@ -121,6 +122,8 @@ fun MovieDetails(
                             coroutineScope.launch { bringIntoViewRequester.bringIntoView() }
                         }
                     },
+                    movieDetails = movieDetails,
+                    recentlyWatched = recentlyWatched,
                     goToMoviePlayer = goToMoviePlayer,
                     focusRequester = focusRequester
                 )
@@ -132,6 +135,8 @@ fun MovieDetails(
 @Composable
 private fun WatchTrailerButton(
     modifier: Modifier = Modifier,
+    movieDetails: MovieDetails,
+    recentlyWatched: com.google.jetstream.data.database.entities.RecentlyWatchedEntity? = null,
     goToMoviePlayer: () -> Unit,
     focusRequester: FocusRequester? = null
 ) {
@@ -148,17 +153,22 @@ private fun WatchTrailerButton(
             contentDescription = null
         )
         Spacer(Modifier.size(8.dp))
-        // 文案改为“播放”，但保持按钮原有宽度：用一段不可见的原文案占位
+        // 根据播放记录显示不同的文案
+        val playButtonText = getPlayButtonText(movieDetails, recentlyWatched)
+        
         Box {
             Text(
-                text = "播放",
+                text = playButtonText,
                 style = MaterialTheme.typography.titleSmall
             )
-            Text(
-                text = stringResource(R.string.watch_trailer),
-                style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier.alpha(0f)
-            )
+            // 保持按钮原有宽度：用一段不可见的原文案占位（如果新文案更短的话）
+            if (playButtonText.length < 10) { // 大概估算，如果新文案比较短则需要占位
+                Text(
+                    text = stringResource(R.string.watch_trailer),
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.alpha(0f)
+                )
+            }
         }
     }
 }
@@ -350,3 +360,42 @@ private fun humanReadableBytes(bytes: Long): String {
 }
 
 private data class Quad<A,B,C,D>(val first: A, val second: B, val third: C, val fourth: D)
+
+/**
+ * 根据播放记录生成播放按钮文字
+ */
+private fun getPlayButtonText(
+    movieDetails: MovieDetails,
+    recentlyWatched: com.google.jetstream.data.database.entities.RecentlyWatchedEntity?
+): String {
+    if (recentlyWatched?.currentPositionMs == null) {
+        return "播放"
+    }
+    
+    val timeText = formatTimeFromMs(recentlyWatched.currentPositionMs)
+    
+    return if (movieDetails.isTV) {
+        // 电视剧：播放 第X集 24:34
+        // TODO: 这里需要从播放记录中获取集数信息，暂时先显示第1集
+        "播放 第1集 $timeText"
+    } else {
+        // 电影：播放 24:34
+        "播放 $timeText"
+    }
+}
+
+/**
+ * 将毫秒转换为时间格式（MM:SS 或 HH:MM:SS）
+ */
+private fun formatTimeFromMs(timeMs: Long): String {
+    val totalSeconds = timeMs / 1000
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    
+    return if (hours > 0) {
+        String.format("%d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        String.format("%d:%02d", minutes, seconds)
+    }
+}

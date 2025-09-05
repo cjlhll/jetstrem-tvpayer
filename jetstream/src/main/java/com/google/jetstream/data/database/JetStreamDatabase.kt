@@ -38,7 +38,7 @@ import com.google.jetstream.data.database.entities.RecentlyWatchedEntity
         ScrapedItemEntity::class,
         RecentlyWatchedEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class JetStreamDatabase : RoomDatabase() {
@@ -142,13 +142,21 @@ abstract class JetStreamDatabase : RoomDatabase() {
             }
         }
         
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // 添加播放进度相关的新字段到 recently_watched 表
+                database.execSQL("ALTER TABLE recently_watched ADD COLUMN currentPositionMs INTEGER")
+                database.execSQL("ALTER TABLE recently_watched ADD COLUMN durationMs INTEGER")
+            }
+        }
+        
         fun getDatabase(context: Context): JetStreamDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     JetStreamDatabase::class.java,
                     "jetstream_database"
-                ).addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                ).addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance

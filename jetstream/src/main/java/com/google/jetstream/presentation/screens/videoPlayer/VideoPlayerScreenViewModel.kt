@@ -79,6 +79,20 @@ class VideoPlayerScreenViewModel @Inject constructor(
             }
         }
     }
+
+    /**
+     * 保存播放进度到最近观看记录
+     */
+    fun saveWatchProgress(movieDetails: MovieDetails, currentPositionMs: Long, durationMs: Long) {
+        viewModelScope.launch {
+            try {
+                recentlyWatchedRepository.addRecentlyWatched(movieDetails, currentPositionMs, durationMs)
+                android.util.Log.d("VideoPlayerVM", "Saved watch progress: ${movieDetails.name}, position: ${currentPositionMs}ms, duration: ${durationMs}ms")
+            } catch (e: Exception) {
+                android.util.Log.e("VideoPlayerVM", "Failed to save watch progress", e)
+            }
+        }
+    }
     
     // 基本认证请求头（若运行时未配置，会从数据库读取最近配置）
     lateinit var headers: Map<String, String>
@@ -103,9 +117,18 @@ class VideoPlayerScreenViewModel @Inject constructor(
                 val entity = scrapedItemDao.getById(id)
                 val webdavUri = entity?.sourcePath
                 val detailsWithUri = if (!webdavUri.isNullOrBlank()) details.copy(videoUri = webdavUri) else details
-                android.util.Log.i("VideoPlayerVM", "movieId=$id, finalPlayUri=${detailsWithUri.videoUri}")
                 
-                VideoPlayerScreenUiState.Done(movieDetails = detailsWithUri)
+                // 获取播放记录，用于从上次位置开始播放
+                val recentlyWatched = try {
+                    recentlyWatchedRepository.getRecentlyWatchedByMovieId(id)
+                } catch (_: Exception) { null }
+                
+                android.util.Log.i("VideoPlayerVM", "movieId=$id, finalPlayUri=${detailsWithUri.videoUri}, startPosition=${recentlyWatched?.currentPositionMs}ms")
+                
+                VideoPlayerScreenUiState.Done(
+                    movieDetails = detailsWithUri,
+                    startPositionMs = recentlyWatched?.currentPositionMs
+                )
             }
         }.stateIn(
             scope = viewModelScope,
@@ -120,5 +143,8 @@ class VideoPlayerScreenViewModel @Inject constructor(
 sealed class VideoPlayerScreenUiState {
     data object Loading : VideoPlayerScreenUiState()
     data object Error : VideoPlayerScreenUiState()
-    data class Done(val movieDetails: MovieDetails) : VideoPlayerScreenUiState()
+    data class Done(
+        val movieDetails: MovieDetails,
+        val startPositionMs: Long? = null
+    ) : VideoPlayerScreenUiState()
 }

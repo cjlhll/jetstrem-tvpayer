@@ -22,7 +22,7 @@ import androidx.lifecycle.viewModelScope
 import com.google.jetstream.data.entities.MovieDetails
 import com.google.jetstream.data.repositories.MovieRepository
 import com.google.jetstream.data.database.dao.ScrapedItemDao
-
+import com.google.jetstream.data.repositories.RecentlyWatchedRepository
 import com.google.jetstream.data.repositories.ScrapedMoviesStore
 import com.google.jetstream.data.repositories.ScrapedTvStore
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -30,6 +30,7 @@ import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.combine
 import com.google.jetstream.data.webdav.WebDavService
 import com.google.jetstream.data.webdav.WebDavResult
 import kotlinx.coroutines.async
@@ -46,6 +47,7 @@ class MovieDetailsScreenViewModel @Inject constructor(
     scrapedTvStore: ScrapedTvStore,
     private val webDavService: WebDavService,
     private val scrapedItemDao: ScrapedItemDao,
+    private val recentlyWatchedRepository: RecentlyWatchedRepository,
 ) : ViewModel() {
     val uiState = savedStateHandle
         .getStateFlow<String?>(MovieDetailsScreen.MovieIdBundleKey, null)
@@ -89,7 +91,16 @@ class MovieDetailsScreenViewModel @Inject constructor(
                     }
                 } catch (_: Exception) { null }
 
-                MovieDetailsScreenUiState.Done(movieDetails = fixed, fileSizeBytes = sizeBytes)
+                // 获取播放记录
+                val recentlyWatched = try {
+                    recentlyWatchedRepository.getRecentlyWatchedByMovieId(id)
+                } catch (_: Exception) { null }
+
+                MovieDetailsScreenUiState.Done(
+                    movieDetails = fixed, 
+                    fileSizeBytes = sizeBytes,
+                    recentlyWatched = recentlyWatched
+                )
             }
         }.stateIn(
             scope = viewModelScope,
@@ -101,5 +112,9 @@ class MovieDetailsScreenViewModel @Inject constructor(
 sealed class MovieDetailsScreenUiState {
     data object Loading : MovieDetailsScreenUiState()
     data object Error : MovieDetailsScreenUiState()
-    data class Done(val movieDetails: MovieDetails, val fileSizeBytes: Long? = null) : MovieDetailsScreenUiState()
+    data class Done(
+        val movieDetails: MovieDetails, 
+        val fileSizeBytes: Long? = null,
+        val recentlyWatched: com.google.jetstream.data.database.entities.RecentlyWatchedEntity? = null
+    ) : MovieDetailsScreenUiState()
 }

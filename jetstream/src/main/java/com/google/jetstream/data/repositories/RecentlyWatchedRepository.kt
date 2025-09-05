@@ -17,7 +17,11 @@ class RecentlyWatchedRepository @Inject constructor(
     /**
      * 添加或更新最近观看记录
      */
-    suspend fun addRecentlyWatched(movieDetails: MovieDetails) {
+    suspend fun addRecentlyWatched(movieDetails: MovieDetails, currentPositionMs: Long? = null, durationMs: Long? = null) {
+        val watchProgress = if (currentPositionMs != null && durationMs != null && durationMs > 0) {
+            (currentPositionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+        } else null
+        
         val entity = RecentlyWatchedEntity(
             movieId = movieDetails.id,
             movieTitle = movieDetails.name,
@@ -28,7 +32,9 @@ class RecentlyWatchedRepository @Inject constructor(
             rating = null, // 从MovieDetails中无法直接获取rating，可以后续扩展
             type = if (movieDetails.isTV) "tv" else "movie",
             lastWatchedAt = System.currentTimeMillis(),
-            watchProgress = null // 可以后续扩展观看进度功能
+            watchProgress = watchProgress,
+            currentPositionMs = currentPositionMs,
+            durationMs = durationMs
         )
         
         recentlyWatchedDao.insertOrUpdate(entity)
@@ -55,7 +61,9 @@ class RecentlyWatchedRepository @Inject constructor(
                     description = entity.description,
                     releaseDate = entity.releaseDate,
                     rating = entity.rating,
-                    watchProgress = entity.watchProgress
+                    watchProgress = entity.watchProgress,
+                    currentPositionMs = entity.currentPositionMs,
+                    durationMs = entity.durationMs
                 )
             }
         }

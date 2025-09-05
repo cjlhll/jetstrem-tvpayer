@@ -24,6 +24,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -33,6 +34,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
@@ -64,6 +66,22 @@ import com.google.jetstream.data.entities.Movie
 import com.google.jetstream.data.util.StringConstants
 import com.google.jetstream.presentation.screens.dashboard.rememberChildPadding
 import com.google.jetstream.presentation.theme.JetStreamBorderWidth
+
+/**
+ * 将毫秒转换为时间格式字符串 (mm:ss 或 h:mm:ss)
+ */
+private fun formatTime(milliseconds: Long): String {
+    val totalSeconds = milliseconds / 1000
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    
+    return if (hours > 0) {
+        String.format("%d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        String.format("%02d:%02d", minutes, seconds)
+    }
+}
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -167,27 +185,50 @@ private fun MovieListItem(
                             .graphicsLayer { alpha = contentAlpha }
                     )
                     
-                    // 进度条在卡片内部底部 - 带背景阴影更清晰
-                    val progress = movie.watchProgress ?: 0.6f // 临时设置默认进度为60%用于测试
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .align(Alignment.BottomCenter)
-                            .padding(horizontal = 8.dp, vertical = 8.dp)
-                            .background(
-                                Color.Black.copy(alpha = 0.5f),
-                                RoundedCornerShape(4.dp)
-                            )
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        LinearProgressIndicator(
-                            progress = { progress },
+                    // 显示进度条和时间（仅当有观看进度时）
+                    movie.watchProgress?.let { progress ->
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(4.dp),
-                            color = Color.White,
-                            trackColor = Color.Gray.copy(alpha = 0.4f)
-                        )
+                                .align(Alignment.BottomCenter)
+                                .background(
+                                    brush = Brush.verticalGradient(
+                                        colors = listOf(
+                                            Color.Transparent,
+                                            Color.Black.copy(alpha = 0.8f)
+                                        ),
+                                        startY = 0f,
+                                        endY = Float.POSITIVE_INFINITY
+                                    )
+                                )
+                                .padding(horizontal = 8.dp, vertical = 8.dp)
+                        ) {
+                            // 时间显示在上方，右对齐
+                            val currentTime = movie.currentPositionMs?.let { formatTime(it) } ?: "00:00"
+                            val totalTime = movie.durationMs?.let { formatTime(it) } ?: "00:00"
+                            
+                            Text(
+                                text = "$currentTime / $totalTime",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Medium
+                                ),
+                                color = Color.White,
+                                modifier = Modifier
+                                    .align(Alignment.End)
+                                    .padding(bottom = 4.dp)
+                            )
+                            
+                            // 进度条在下方
+                            LinearProgressIndicator(
+                                progress = { progress },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(3.dp),
+                                color = Color.White,
+                                trackColor = Color.Gray.copy(alpha = 0.4f)
+                            )
+                        }
                     }
                 }
             },

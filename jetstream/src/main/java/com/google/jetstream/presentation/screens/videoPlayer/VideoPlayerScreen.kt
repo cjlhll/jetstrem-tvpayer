@@ -87,11 +87,16 @@ fun VideoPlayerScreen(
         is VideoPlayerScreenUiState.Done -> {
             VideoPlayerScreenContent(
                 movieDetails = s.movieDetails,
+                startPositionMs = s.startPositionMs,
                 onBackPressed = onBackPressed,
                 headers = videoPlayerScreenViewModel.headers,
                 onVideoStarted = {
                     // 当视频实际开始播放时，记录到最近观看
                     videoPlayerScreenViewModel.addToRecentlyWatched(s.movieDetails)
+                },
+                onSaveProgress = { currentPositionMs, durationMs ->
+                    // 保存播放进度
+                    videoPlayerScreenViewModel.saveWatchProgress(s.movieDetails, currentPositionMs, durationMs)
                 }
             )
         }
@@ -101,10 +106,12 @@ fun VideoPlayerScreen(
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 fun VideoPlayerScreenContent(
-    movieDetails: MovieDetails, 
+    movieDetails: MovieDetails,
+    startPositionMs: Long? = null,
     onBackPressed: () -> Unit, 
     headers: Map<String, String>,
-    onVideoStarted: () -> Unit = {}
+    onVideoStarted: () -> Unit = {},
+    onSaveProgress: (currentPositionMs: Long, durationMs: Long) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
     // 优先用 SurfaceView 以保证 HDR/色彩路径
@@ -115,6 +122,13 @@ fun VideoPlayerScreenContent(
     androidx.compose.runtime.DisposableEffect(exoPlayer) {
         onDispose {
             try {
+                // 保存播放进度
+                val currentPosition = exoPlayer.currentPosition
+                val duration = exoPlayer.duration
+                if (currentPosition > 0 && duration > 0) {
+                    onSaveProgress(currentPosition, duration)
+                }
+                
                 exoPlayer.playWhenReady = false
                 exoPlayer.stop()
                 exoPlayer.clearMediaItems()
@@ -141,10 +155,16 @@ fun VideoPlayerScreenContent(
         hideSeconds = 4,
     )
 
-        android.util.Log.i("VideoPlayer", "准备播放 URL: ${movieDetails.videoUri}")
-    LaunchedEffect(exoPlayer, movieDetails) {
+        android.util.Log.i("VideoPlayer", "准备播放 URL: ${movieDetails.videoUri}, startPosition: ${startPositionMs}ms")
+    LaunchedEffect(exoPlayer, movieDetails, startPositionMs) {
         exoPlayer.addMediaItem(movieDetails.intoMediaItem())
         exoPlayer.prepare()
+        
+        // 如果有播放记录，设置播放位置
+        if (startPositionMs != null && startPositionMs > 0) {
+            exoPlayer.seekTo(startPositionMs)
+            android.util.Log.d("VideoPlayer", "Seeking to position: ${startPositionMs}ms")
+        }
     }
     
     // 监听播放状态，当开始播放时记录到最近观看
@@ -172,6 +192,13 @@ fun VideoPlayerScreenContent(
             videoPlayerState.hideControls()
         } else {
             try {
+                // 保存播放进度
+                val currentPosition = exoPlayer.currentPosition
+                val duration = exoPlayer.duration
+                if (currentPosition > 0 && duration > 0) {
+                    onSaveProgress(currentPosition, duration)
+                }
+                
                 exoPlayer.playWhenReady = false
                 exoPlayer.stop()
                 exoPlayer.clearMediaItems()

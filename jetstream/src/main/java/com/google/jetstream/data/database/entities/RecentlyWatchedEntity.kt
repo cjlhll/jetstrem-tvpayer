@@ -14,5 +14,7 @@ data class RecentlyWatchedEntity(
     val rating: Float?,
     val type: String, // "movie" or "tv"
     val lastWatchedAt: Long = System.currentTimeMillis(), // 最后观看时间
-    val watchProgress: Float? = null // 观看进度，0.0 到 1.0
+    val watchProgress: Float? = null, // 观看进度，0.0 到 1.0
+    val currentPositionMs: Long? = null, // 当前播放位置（毫秒）
+    val durationMs: Long? = null // 总时长（毫秒）
 )

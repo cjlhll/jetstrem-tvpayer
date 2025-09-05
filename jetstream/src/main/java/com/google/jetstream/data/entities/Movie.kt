@@ -28,6 +28,8 @@ data class Movie(
     val releaseDate: String? = null,
     val rating: Float? = null,
     val watchProgress: Float? = null, // 观看进度，0.0 到 1.0
+    val currentPositionMs: Long? = null, // 当前播放位置（毫秒）
+    val durationMs: Long? = null // 总时长（毫秒）
 )
 
 fun MoviesResponseItem.toMovie(thumbnailType: ThumbnailType = ThumbnailType.Standard): Movie {

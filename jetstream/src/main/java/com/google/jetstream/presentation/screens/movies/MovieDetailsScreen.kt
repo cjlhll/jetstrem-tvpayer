@@ -84,6 +84,7 @@ fun MovieDetailsScreen(
             Details(
                 movieDetails = s.movieDetails,
                 fileSizeBytes = s.fileSizeBytes,
+                recentlyWatched = s.recentlyWatched,
                 goToMoviePlayer = { goToMoviePlayer(s.movieDetails.id) },
                 onBackPressed = onBackPressed,
                 refreshScreenWithNewMovie = refreshScreenWithNewMovie,
@@ -99,6 +100,7 @@ fun MovieDetailsScreen(
 private fun Details(
     movieDetails: MovieDetails,
     fileSizeBytes: Long?,
+    recentlyWatched: com.google.jetstream.data.database.entities.RecentlyWatchedEntity?,
     goToMoviePlayer: () -> Unit,
     onBackPressed: () -> Unit,
     refreshScreenWithNewMovie: (Movie) -> Unit,
@@ -119,6 +121,7 @@ private fun Details(
             MovieDetails(
                 movieDetails = movieDetails,
                 fileSizeBytes = fileSizeBytes,
+                recentlyWatched = recentlyWatched,
                 goToMoviePlayer = goToMoviePlayer,
                 focusRequester = playButtonFocusRequester
             )
