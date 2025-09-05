@@ -17,6 +17,7 @@
 package com.google.jetstream.data.entities
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 
 /**
  * 剧集信息数据模型
@@ -35,7 +36,15 @@ data class Episode(
     val seasonNumber: Int, // 所属季号
     val watchProgress: Float? = null, // 观看进度，0.0 到 1.0
     val currentPositionMs: Long? = null, // 当前播放位置（毫秒）
-    val durationMs: Long? = null // 总时长（毫秒）
+    val durationMs: Long? = null, // 总时长（毫秒）
+
+    // 以下为本地文件信息，不参与序列化
+    @Transient
+    val videoUri: String? = null, // 视频文件路径
+    @Transient
+    val fileName: String? = null, // 视频文件名
+    @Transient
+    val fileSizeBytes: Long? = null // 视频文件大小
 ) {
     /**
      * 获取完整的剧集封面图片URL

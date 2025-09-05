@@ -129,7 +129,8 @@ private fun Details(
 ) {
     // 剧集状态
     val episodesState by movieDetailsScreenViewModel.episodesState.collectAsStateWithLifecycle()
-    
+    val sourceInfoEpisode by movieDetailsScreenViewModel.sourceInfoEpisode.collectAsStateWithLifecycle()
+
     // 当前选中的季
     var selectedSeasonNumber by remember { mutableStateOf(1) }
     val childPadding = rememberChildPadding()
@@ -251,7 +252,11 @@ private fun Details(
             )
         }
         item {
-            SourceInfoAndSpecs(movieDetails = movieDetails, fileSizeBytes = fileSizeBytes)
+            SourceInfoAndSpecs(
+                movieDetails = movieDetails,
+                fileSizeBytes = fileSizeBytes,
+                episode = if (movieDetails.isTV) sourceInfoEpisode else null
+            )
         }
         item {
             // 底部返回顶部按钮（居中）

@@ -58,6 +58,7 @@ import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.google.jetstream.R
+import com.google.jetstream.data.entities.Episode
 import com.google.jetstream.data.entities.MovieDetails
 import com.google.jetstream.data.util.StringConstants
 import com.google.jetstream.presentation.screens.dashboard.rememberChildPadding
@@ -271,7 +272,11 @@ private fun MovieImageWithGradients(
 }
 
 @Composable
-fun SourceInfoAndSpecs(movieDetails: MovieDetails, fileSizeBytes: Long? = null) {
+fun SourceInfoAndSpecs(
+    movieDetails: MovieDetails,
+    fileSizeBytes: Long? = null,
+    episode: com.google.jetstream.data.entities.Episode? = null
+) {
     val childPadding = rememberChildPadding()
     Column(
         modifier = Modifier
@@ -280,11 +285,14 @@ fun SourceInfoAndSpecs(movieDetails: MovieDetails, fileSizeBytes: Long? = null) 
             .alpha(0.85f)
             .focusable(false)
     ) {
-        val path = movieDetails.videoUri
+        val path = episode?.videoUri ?: movieDetails.videoUri
+        val duration = episode?.runtime?.let { "${it}m" } ?: movieDetails.duration
+        val sizeBytes = episode?.fileSizeBytes ?: fileSizeBytes
+
         // 1) 文件名（带后缀）
-        val (fileName, dirText, specs, durationZh) = remember(path, movieDetails.duration) {
+        val (fileName, dirText, specs, durationZh) = remember(path, duration) {
             val uri = try { android.net.Uri.parse(path) } catch (_: Throwable) { null }
-            val rawFile = (uri?.lastPathSegment ?: path.substringAfterLast('/')).ifBlank { movieDetails.name }
+            val rawFile = episode?.fileName ?: (uri?.lastPathSegment ?: path.substringAfterLast('/')).ifBlank { movieDetails.name }
             val decodedFile = try { java.net.URLDecoder.decode(rawFile, "UTF-8") } catch (_: Throwable) { rawFile }
             val parentPath = try {
                 val segs = uri?.pathSegments ?: emptyList()
@@ -297,7 +305,7 @@ fun SourceInfoAndSpecs(movieDetails: MovieDetails, fileSizeBytes: Long? = null) 
             }
             val dir = listOf(hostOrPrefix, parentPath.trim('/')).filter { it.isNotBlank() }.joinToString(" / ")
             val specsText = guessSpecs(path)
-            val zhDuration = toZhDuration(movieDetails.duration)
+            val zhDuration = toZhDuration(duration)
             Quad(decodedFile, dir, specsText, zhDuration)
         }
 
@@ -310,7 +318,7 @@ fun SourceInfoAndSpecs(movieDetails: MovieDetails, fileSizeBytes: Long? = null) 
             )
         }
         // 第三行：时长 + 规格（若有）
-        val sizeText = fileSizeBytes?.takeIf { it > 0 }?.let { humanReadableBytes(it) } ?: ""
+        val sizeText = sizeBytes?.takeIf { it > 0 }?.let { humanReadableBytes(it) } ?: ""
         // 顺序调整为：时长  文件大小  分辨率规格
         val thirdLine = listOf(durationZh, sizeText, specs).filter { it.isNotBlank() }.joinToString("  ")
         if (thirdLine.isNotBlank()) {

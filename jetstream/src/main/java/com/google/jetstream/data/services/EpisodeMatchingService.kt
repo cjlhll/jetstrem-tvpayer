@@ -6,6 +6,7 @@ import com.google.jetstream.data.entities.TvSeason
 import com.google.jetstream.data.remote.TmdbService
 import com.google.jetstream.data.webdav.WebDavResult
 import com.google.jetstream.data.webdav.WebDavService
+import com.thegrizzlylabs.sardineandroid.DavResource
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -61,6 +62,9 @@ class EpisodeMatchingService @Inject constructor(
             for (tmdbEpisode in seasonDetails.episodes) {
                 val matchedFile = findMatchingLocalFile(tmdbEpisode.episodeNumber, localFiles)
                 if (matchedFile != null) {
+                    // 构造完整的视频文件URI
+                    val videoUri = localSeason.webDavPath.removeSuffix("/") + "/" + matchedFile.name
+
                     // 创建包含本地文件信息的Episode对象
                     val episode = Episode(
                         id = tmdbEpisode.id.toString(),
@@ -76,10 +80,13 @@ class EpisodeMatchingService @Inject constructor(
                         // 这里可以添加本地文件的观看进度信息
                         watchProgress = null, // TODO: 从数据库获取观看进度
                         currentPositionMs = null,
-                        durationMs = tmdbEpisode.runtime?.let { it * 60 * 1000L }
+                        durationMs = tmdbEpisode.runtime?.let { it * 60 * 1000L },
+                        videoUri = videoUri,
+                        fileName = matchedFile.name,
+                        fileSizeBytes = matchedFile.contentLength
                     )
                     matchedEpisodes.add(episode)
-                    Log.d(TAG, "匹配成功: 第${tmdbEpisode.episodeNumber}集 -> $matchedFile")
+                    Log.d(TAG, "匹配成功: 第${tmdbEpisode.episodeNumber}集 -> ${matchedFile.name}")
                 } else {
                     Log.d(TAG, "本地未找到: 第${tmdbEpisode.episodeNumber}集")
                 }
@@ -97,14 +104,13 @@ class EpisodeMatchingService @Inject constructor(
     /**
      * 获取本地视频文件列表
      */
-    private suspend fun getLocalVideoFiles(webDavPath: String): List<String> {
+    private suspend fun getLocalVideoFiles(webDavPath: String): List<DavResource> {
         return try {
             when (val result = webDavService.listDirectory(webDavPath)) {
                 is WebDavResult.Success -> {
                     result.data
                         .filter { !it.isDirectory && isVideoFile(it.name) }
-                        .map { it.name }
-                        .sorted()
+                        .sortedBy { it.name }
                 }
                 else -> {
                     Log.w(TAG, "无法列出目录: $webDavPath")
@@ -120,13 +126,13 @@ class EpisodeMatchingService @Inject constructor(
     /**
      * 查找与指定集数匹配的本地文件
      */
-    private fun findMatchingLocalFile(episodeNumber: Int, localFiles: List<String>): String? {
+    private fun findMatchingLocalFile(episodeNumber: Int, localFiles: List<DavResource>): DavResource? {
         // 尝试多种匹配模式
         val patterns = listOf(
             // 标准格式：S01E01, S1E1
             Regex("(?i)s\\d{1,2}[ _.-]?e0*${episodeNumber}(?![0-9])"),
             // 前导数字：01, 001
-            Regex("(?i)^0*${episodeNumber}[ _.\\-]"),
+            Regex("(?i)^0*${episodeNumber}[ _.\\-] "),
             // 中文格式：第01集, 第1集
             Regex("(?i)第\\s*0*${episodeNumber}\\s*集"),
             // E格式：E01, EP01
@@ -136,8 +142,8 @@ class EpisodeMatchingService @Inject constructor(
         )
 
         for (pattern in patterns) {
-            val matchedFile = localFiles.find { fileName ->
-                pattern.containsMatchIn(fileName)
+            val matchedFile = localFiles.find { fileEntry ->
+                pattern.containsMatchIn(fileEntry.name)
             }
             if (matchedFile != null) {
                 return matchedFile

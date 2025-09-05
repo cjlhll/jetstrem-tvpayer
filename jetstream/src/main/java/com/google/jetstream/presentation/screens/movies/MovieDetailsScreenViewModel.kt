@@ -61,6 +61,9 @@ class MovieDetailsScreenViewModel @Inject constructor(
     // 剧集列表状态
     private val _episodesState = MutableStateFlow<EpisodesUiState>(EpisodesUiState.Loading)
     val episodesState: StateFlow<EpisodesUiState> = _episodesState.asStateFlow()
+    private val _sourceInfoEpisode = MutableStateFlow<Episode?>(null)
+    val sourceInfoEpisode: StateFlow<Episode?> = _sourceInfoEpisode.asStateFlow()
+
     val uiState = savedStateHandle
         .getStateFlow<String?>(MovieDetailsScreen.MovieIdBundleKey, null)
         .map { id ->
@@ -107,6 +110,14 @@ class MovieDetailsScreenViewModel @Inject constructor(
                 val recentlyWatched = try {
                     recentlyWatchedRepository.getRecentlyWatchedByMovieId(id)
                 } catch (_: Exception) { null }
+
+                // 如果是电视剧，获取用于显示源信息的剧集
+                if (fixed.isTV) {
+                    viewModelScope.launch {
+                        val playbackInfo = tvPlaybackService.getPlaybackInfo(fixed.id, fixed)
+                        _sourceInfoEpisode.value = playbackInfo?.episode
+                    }
+                }
 
                 MovieDetailsScreenUiState.Done(
                     movieDetails = fixed, 
