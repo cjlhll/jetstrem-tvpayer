@@ -19,7 +19,8 @@ package com.google.jetstream.presentation.screens.movietype
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.google.jetstream.data.repositories.MovieRepository
+import com.google.jetstream.data.repositories.ScrapedMoviesStore
+import com.google.jetstream.data.repositories.ScrapedTvStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
@@ -32,7 +33,8 @@ import javax.inject.Inject
 @HiltViewModel
 class MovieTypeListScreenViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
-    movieRepository: MovieRepository
+    scrapedMoviesStore: ScrapedMoviesStore,
+    scrapedTvStore: ScrapedTvStore
 ) : ViewModel() {
 
     val uiState = savedStateHandle.getStateFlow<String?>(
@@ -41,7 +43,7 @@ class MovieTypeListScreenViewModel @Inject constructor(
     ).flatMapLatest { movieType ->
         when (movieType) {
             "movies" -> {
-                movieRepository.getTrendingMovies().map { movieList ->
+                scrapedMoviesStore.movies.map { movieList ->
                     MovieTypeListScreenUiState.Ready(
                         title = "电影",
                         movies = movieList
@@ -49,7 +51,7 @@ class MovieTypeListScreenViewModel @Inject constructor(
                 }
             }
             "shows" -> {
-                movieRepository.getNowPlayingMovies().map { movieList ->
+                scrapedTvStore.shows.map { movieList ->
                     MovieTypeListScreenUiState.Ready(
                         title = "电视剧",
                         movies = movieList
