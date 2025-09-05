@@ -415,12 +415,39 @@ class VideoPlayerScreenViewModel @Inject constructor(
                             episodeId = validEpisodeId
                         )
                     } else {
-                        android.util.Log.w("VideoPlayerVM", "无法获取剧集播放信息，使用默认设置")
-                        VideoPlayerScreenUiState.Done(
-                            movieDetails = detailsWithUri,
-                            startPositionMs = recentlyWatched?.currentPositionMs,
-                            episodeId = validEpisodeId
-                        )
+                        // 无法从TvPlaybackService获取匹配的剧集信息，尝试从历史记录构建
+                        android.util.Log.w("VideoPlayerVM", "TvPlaybackService返回的剧集ID不匹配，尝试从历史记录构建播放URL")
+                        
+                        if (recentlyWatched != null && recentlyWatched.episodeId == validEpisodeId &&
+                            recentlyWatched.seasonNumber != null && recentlyWatched.episodeNumber != null) {
+                            // 使用历史记录中的剧集信息构建播放URL
+                            val episodeVideoUri = buildEpisodeVideoUri(
+                                baseUri = detailsWithUri.videoUri,
+                                seasonNumber = recentlyWatched.seasonNumber,
+                                episodeNumber = recentlyWatched.episodeNumber,
+                                entity = entity
+                            )
+                            
+                            val episodeDetails = detailsWithUri.copy(
+                                videoUri = episodeVideoUri,
+                                name = "${detailsWithUri.name} - 第${recentlyWatched.seasonNumber}季第${recentlyWatched.episodeNumber}集"
+                            )
+                            
+                            android.util.Log.i("VideoPlayerVM", "从历史记录构建剧集播放URL: $episodeVideoUri, 起始位置: ${recentlyWatched.currentPositionMs}ms")
+                            
+                            VideoPlayerScreenUiState.Done(
+                                movieDetails = episodeDetails,
+                                startPositionMs = recentlyWatched.currentPositionMs,
+                                episodeId = validEpisodeId
+                            )
+                        } else {
+                            android.util.Log.e("VideoPlayerVM", "无法构建剧集播放URL，历史记录信息不完整")
+                            VideoPlayerScreenUiState.Done(
+                                movieDetails = detailsWithUri,
+                                startPositionMs = recentlyWatched?.currentPositionMs,
+                                episodeId = validEpisodeId
+                            )
+                        }
                     }
                 } else {
                     android.util.Log.i("VideoPlayerVM", "播放电影: movieId=$movieId, finalPlayUri=${detailsWithUri.videoUri}, startPosition=${recentlyWatched?.currentPositionMs}ms")

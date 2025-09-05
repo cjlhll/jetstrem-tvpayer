@@ -74,7 +74,12 @@ class RecentlyWatchedRepository @Inject constructor(
                     rating = entity.rating,
                     watchProgress = entity.watchProgress,
                     currentPositionMs = entity.currentPositionMs,
-                    durationMs = entity.durationMs
+                    durationMs = entity.durationMs,
+                    // 电视剧相关字段
+                    episodeId = entity.episodeId,
+                    seasonNumber = entity.seasonNumber,
+                    episodeNumber = entity.episodeNumber,
+                    isTV = entity.type == "tv"
                 )
             }
         }

@@ -131,8 +131,17 @@ fun App(
                             Screens.MovieDetails.withArgs(movieId)
                         )
                     },
-                    openVideoPlayer = {
-                        navController.navigate(Screens.VideoPlayer())
+                    openVideoPlayer = { movie ->
+                        // 智能播放逻辑：根据内容类型和历史记录决定播放方式
+                        if (movie.isTV && movie.episodeId != null) {
+                            // 电视剧：传递剧集ID
+                            android.util.Log.d("App", "播放电视剧: ${movie.name}, 剧集ID: ${movie.episodeId}")
+                            navController.navigate(Screens.VideoPlayer.withArgs(movie.id, movie.episodeId))
+                        } else {
+                            // 电影：传递null作为剧集ID
+                            android.util.Log.d("App", "播放电影: ${movie.name}")
+                            navController.navigate(Screens.VideoPlayer.withArgs(movie.id, "null"))
+                        }
                     },
                     openMovieTypeList = { movieType ->
                         navController.navigate(

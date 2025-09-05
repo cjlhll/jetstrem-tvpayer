@@ -29,7 +29,12 @@ data class Movie(
     val rating: Float? = null,
     val watchProgress: Float? = null, // 观看进度，0.0 到 1.0
     val currentPositionMs: Long? = null, // 当前播放位置（毫秒）
-    val durationMs: Long? = null // 总时长（毫秒）
+    val durationMs: Long? = null, // 总时长（毫秒）
+    // 电视剧相关字段
+    val episodeId: String? = null, // 当前观看的剧集ID
+    val seasonNumber: Int? = null, // 当前观看的季号
+    val episodeNumber: Int? = null, // 当前观看的剧集号
+    val isTV: Boolean = false // 是否为电视剧
 )
 
 fun MoviesResponseItem.toMovie(thumbnailType: ThumbnailType = ThumbnailType.Standard): Movie {

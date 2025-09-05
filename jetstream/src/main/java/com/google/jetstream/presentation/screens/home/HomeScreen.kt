@@ -136,7 +136,7 @@ private fun Catalog(
                 MoviesScreenMovieList(
                     movieList = recentlyWatchedMovies,
                     title = "最近观看",
-                    onMovieClick = onMovieClick
+                    onMovieClick = goToVideoPlayer // 直接跳转播放，不经过详情页
                 )
             }
         }

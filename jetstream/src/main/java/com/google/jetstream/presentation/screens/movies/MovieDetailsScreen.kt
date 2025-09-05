@@ -103,6 +103,7 @@ fun MovieDetailsScreen(
                         goToMoviePlayer(s.movieDetails.id)
                     }
                 },
+                goToEpisodePlayer = goToEpisodePlayer,
                 onBackPressed = onBackPressed,
                 refreshScreenWithNewMovie = refreshScreenWithNewMovie,
                 movieDetailsScreenViewModel = movieDetailsScreenViewModel,
@@ -120,6 +121,7 @@ private fun Details(
     fileSizeBytes: Long?,
     recentlyWatched: com.google.jetstream.data.database.entities.RecentlyWatchedEntity?,
     goToMoviePlayer: () -> Unit,
+    goToEpisodePlayer: (String, String) -> Unit, // 新增：播放指定剧集的回调
     onBackPressed: () -> Unit,
     refreshScreenWithNewMovie: (Movie) -> Unit,
     modifier: Modifier = Modifier,
@@ -204,8 +206,16 @@ private fun Details(
                                 episodeList = currentEpisodesState.episodes,
                                 title = "第${selectedSeasonNumber}季剧集",
                                 onEpisodeClick = { episode ->
-                                    // TODO: 处理剧集点击，可以跳转到播放页面
-                                    // 这里可以根据需要实现剧集播放逻辑
+                                    // 智能播放逻辑：根据是否有播放记录决定播放方式
+                                    if (episode.watchProgress != null && episode.currentPositionMs != null) {
+                                        // 有播放记录，从历史时间点续播
+                                        android.util.Log.d("MovieDetailsScreen", "续播剧集: 第${episode.seasonNumber}季第${episode.episodeNumber}集, 从${episode.currentPositionMs}ms开始")
+                                    } else {
+                                        // 无播放记录，从0开始播放
+                                        android.util.Log.d("MovieDetailsScreen", "首次播放剧集: 第${episode.seasonNumber}季第${episode.episodeNumber}集")
+                                    }
+                                    // 跳转到播放页面
+                                    goToEpisodePlayer(movieDetails.id, episode.id)
                                 }
                             )
                         }
