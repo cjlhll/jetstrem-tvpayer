@@ -23,6 +23,8 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
@@ -122,21 +124,55 @@ private fun MovieTypeDetails(
                     movie.id
                 }
             ) { index, movie ->
-                MovieCard(
-                    onClick = { onMovieSelected(movie) },
-                    modifier = Modifier
-                        .width(120.dp)
-                        .aspectRatio(ItemDirection.Vertical.aspectRatio)
-                        .padding(8.dp)
-                        .then(
-                            if (index == 0)
-                                Modifier.focusOnInitialVisibility(isFirstItemVisible)
-                            else Modifier
-                        ),
-                ) {
-                    PosterImage(movie = movie, modifier = Modifier.fillMaxSize())
-                }
+                MovieGridItem(
+                    movie = movie,
+                    onMovieSelected = onMovieSelected,
+                    modifier = Modifier.then(
+                        if (index == 0)
+                            Modifier.focusOnInitialVisibility(isFirstItemVisible)
+                        else Modifier
+                    )
+                )
             }
+        }
+    }
+}
+
+@Composable
+private fun MovieGridItem(
+    movie: Movie,
+    onMovieSelected: (Movie) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier.padding(8.dp)
+    ) {
+        MovieCard(
+            onClick = { onMovieSelected(movie) },
+            modifier = Modifier
+                .width(130.dp)
+                .aspectRatio(ItemDirection.Vertical.aspectRatio)
+        ) {
+            PosterImage(movie = movie, modifier = Modifier.fillMaxSize())
+        }
+        Spacer(Modifier.height(16.dp)) // 调整间距为16dp
+        Text(
+            text = movie.name,
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontWeight = FontWeight.SemiBold
+            ),
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
+        val date = movie.releaseDate
+        if (!date.isNullOrBlank()) {
+            Text(
+                text = date,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 4.dp)
+            )
         }
     }
 }
