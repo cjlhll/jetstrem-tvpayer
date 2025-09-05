@@ -55,6 +55,7 @@ class MovieDetailsScreenViewModel @Inject constructor(
     private val scrapedItemDao: ScrapedItemDao,
     private val recentlyWatchedRepository: RecentlyWatchedRepository,
     private val episodeMatchingService: com.google.jetstream.data.services.EpisodeMatchingService,
+    private val tvPlaybackService: com.google.jetstream.data.services.TvPlaybackService,
 ) : ViewModel() {
     
     // 剧集列表状态
@@ -172,6 +173,32 @@ class MovieDetailsScreenViewModel @Inject constructor(
      */
     fun clearEpisodes() {
         _episodesState.value = EpisodesUiState.Loading
+    }
+    
+    /**
+     * 开始电视剧播放（智能播放逻辑）
+     */
+    fun startTvPlayback(movieDetails: MovieDetails, onEpisodeSelected: (String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val playbackInfo = tvPlaybackService.getPlaybackInfo(movieDetails.id, movieDetails)
+                if (playbackInfo != null) {
+                    // 找到了可播放的剧集
+                    android.util.Log.d("MovieDetailsVM", 
+                        "开始播放: 第${playbackInfo.episode.seasonNumber}季第${playbackInfo.episode.episodeNumber}集, " +
+                        "起始位置: ${playbackInfo.startPositionMs}ms, 是否续播: ${playbackInfo.isResuming}")
+                    
+                    // 调用播放回调，传入剧集ID
+                    onEpisodeSelected(playbackInfo.episode.id)
+                } else {
+                    android.util.Log.w("MovieDetailsVM", "无法获取播放信息: ${movieDetails.name}")
+                    // TODO: 可以显示错误提示给用户
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("MovieDetailsVM", "开始播放失败: ${movieDetails.name}", e)
+                // TODO: 可以显示错误提示给用户
+            }
+        }
     }
 }
 

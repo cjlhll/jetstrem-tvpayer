@@ -71,6 +71,7 @@ object MovieDetailsScreen {
 @Composable
 fun MovieDetailsScreen(
     goToMoviePlayer: (String) -> Unit,
+    goToEpisodePlayer: (String, String) -> Unit = { _, _ -> }, // 新增：播放指定剧集的回调
     onBackPressed: () -> Unit,
     refreshScreenWithNewMovie: (Movie) -> Unit,
     movieDetailsScreenViewModel: MovieDetailsScreenViewModel = hiltViewModel()
@@ -91,7 +92,17 @@ fun MovieDetailsScreen(
                 movieDetails = s.movieDetails,
                 fileSizeBytes = s.fileSizeBytes,
                 recentlyWatched = s.recentlyWatched,
-                goToMoviePlayer = { goToMoviePlayer(s.movieDetails.id) },
+                goToMoviePlayer = { 
+                    if (s.movieDetails.isTV) {
+                        // 电视剧：使用智能播放逻辑
+                        movieDetailsScreenViewModel.startTvPlayback(s.movieDetails) { episodeId ->
+                            goToEpisodePlayer(s.movieDetails.id, episodeId)
+                        }
+                    } else {
+                        // 电影：直接播放
+                        goToMoviePlayer(s.movieDetails.id)
+                    }
+                },
                 onBackPressed = onBackPressed,
                 refreshScreenWithNewMovie = refreshScreenWithNewMovie,
                 movieDetailsScreenViewModel = movieDetailsScreenViewModel,

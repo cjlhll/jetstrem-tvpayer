@@ -100,6 +100,9 @@ fun App(
                     goToMoviePlayer = {
                         navController.navigate(Screens.VideoPlayer.withArgs(movieIdArg))
                     },
+                    goToEpisodePlayer = { tvId, episodeId ->
+                        navController.navigate(Screens.VideoPlayer.withArgs(tvId, episodeId))
+                    },
                     refreshScreenWithNewMovie = { movie ->
                         navController.navigate(
                             Screens.MovieDetails.withArgs(movie.id)
@@ -148,6 +151,11 @@ fun App(
                 arguments = listOf(
                     navArgument(VideoPlayerScreen.MovieIdBundleKey) {
                         type = NavType.StringType
+                    },
+                    navArgument(VideoPlayerScreen.EpisodeIdBundleKey) {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
                     }
                 )
             ) {

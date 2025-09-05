@@ -38,7 +38,7 @@ enum class Screens(
     CategoryMovieList(listOf(CategoryMovieListScreen.CategoryIdBundleKey)),
     MovieDetails(listOf(MovieDetailsScreen.MovieIdBundleKey)),
     Dashboard,
-    VideoPlayer(listOf(VideoPlayerScreen.MovieIdBundleKey)),
+    VideoPlayer(listOf(VideoPlayerScreen.MovieIdBundleKey, VideoPlayerScreen.EpisodeIdBundleKey)),
     MovieTypeList(listOf("movieType"));
 
     operator fun invoke(): String {

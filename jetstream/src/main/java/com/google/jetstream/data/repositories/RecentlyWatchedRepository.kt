@@ -89,4 +89,11 @@ class RecentlyWatchedRepository @Inject constructor(
     suspend fun clearAllRecentlyWatched() {
         recentlyWatchedDao.clearAll()
     }
+    
+    /**
+     * 获取DAO实例（供需要直接操作数据库的组件使用）
+     */
+    fun getDao(): RecentlyWatchedDao {
+        return recentlyWatchedDao
+    }
 }

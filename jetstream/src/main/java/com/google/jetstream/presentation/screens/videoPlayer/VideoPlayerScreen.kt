@@ -59,6 +59,7 @@ import com.google.jetstream.presentation.utils.handleDPadKeyEvents
 
 object VideoPlayerScreen {
     const val MovieIdBundleKey = "movieId"
+    const val EpisodeIdBundleKey = "episodeId"
 }
 
 /**
