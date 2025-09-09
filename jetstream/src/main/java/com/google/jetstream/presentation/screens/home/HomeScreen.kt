@@ -119,9 +119,7 @@ private fun Catalog(
     LaunchedEffect(shouldShowTopBar) {
         onScroll(shouldShowTopBar)
     }
-    LaunchedEffect(isTopBarVisible) {
-        if (isTopBarVisible) lazyListState.animateScrollToItem(0)
-    }
+    
 
     LazyColumn(
         state = lazyListState,

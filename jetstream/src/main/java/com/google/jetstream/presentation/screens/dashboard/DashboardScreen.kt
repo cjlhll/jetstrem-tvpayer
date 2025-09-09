@@ -220,8 +220,11 @@ fun DashboardScreen(
                 val targetRoute = screen()
                 if (currentDestination != targetRoute) {
                     navController.navigate(targetRoute) {
-                        if (screen == TopBarTabs[0]) popUpTo(TopBarTabs[0].invoke())
+                        popUpTo(navController.graph.startDestinationId) {
+                            saveState = true
+                        }
                         launchSingleTop = true
+                        restoreState = true
                     }
                 }
             },
