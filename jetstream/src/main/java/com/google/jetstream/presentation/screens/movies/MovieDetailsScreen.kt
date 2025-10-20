@@ -63,6 +63,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.derivedStateOf
 
 object MovieDetailsScreen {
     const val MovieIdBundleKey = "movieId"
@@ -133,6 +134,14 @@ private fun Details(
 
     // 当前选中的季
     var selectedSeasonNumber by remember { mutableStateOf(1) }
+    // 标记是否已完成初始化加载
+    var isInitialized by remember { mutableStateOf(false) }
+    // 标记是否应该加载剧集（使用derivedStateOf避免不必要的重组）
+    val shouldLoadEpisodes by remember {
+        derivedStateOf {
+            isInitialized && selectedSeasonNumber > 0
+        }
+    }
     val childPadding = rememberChildPadding()
 
     val playButtonFocusRequester = FocusRequester()
@@ -177,10 +186,11 @@ private fun Details(
                 }
                 
                 // 初始化时加载第一季的剧集
-                LaunchedEffect(movieDetails.id) {
-                    if (seasons.isNotEmpty()) {
+                LaunchedEffect(movieDetails.id, shouldLoadEpisodes) {
+                    if (seasons.isNotEmpty() && !isInitialized) {
                         selectedSeasonNumber = seasons.first().number
                         movieDetailsScreenViewModel.loadEpisodes(movieDetails.id, selectedSeasonNumber)
+                        isInitialized = true
                     }
                 }
                 
@@ -188,8 +198,11 @@ private fun Details(
                     seasons = seasons,
                     selectedSeason = seasons.find { it.number == selectedSeasonNumber },
                     onSeasonSelected = { season ->
-                        selectedSeasonNumber = season.number
-                        movieDetailsScreenViewModel.loadEpisodes(movieDetails.id, season.number)
+                        // 只有在选择不同季时才重新加载剧集
+                        if (season.number != selectedSeasonNumber) {
+                            selectedSeasonNumber = season.number
+                            movieDetailsScreenViewModel.loadEpisodes(movieDetails.id, season.number)
+                        }
                     }
                 )
             }
