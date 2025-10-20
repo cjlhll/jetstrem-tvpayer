@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.google.jetstream.data.database.dao.ResourceDirectoryDao
 import com.google.jetstream.data.database.dao.WebDavConfigDao
 import com.google.jetstream.data.database.dao.ScrapedItemDao
+import com.google.jetstream.data.database.dao.EpisodesCacheDao
 import com.google.jetstream.data.database.entities.WebDavConfigEntity
 import com.google.jetstream.data.database.entities.ScrapedItemEntity
 import com.google.jetstream.data.webdav.WebDavResult
@@ -45,6 +46,7 @@ class DashboardViewModel @Inject constructor(
     private val scrapedMoviesStore: ScrapedMoviesStore,
     private val scrapedTvStore: ScrapedTvStore,
     private val scrapedItemDao: ScrapedItemDao,
+    private val episodesCacheDao: EpisodesCacheDao,
 ) : ViewModel() {
 
     private val _isRefreshing = kotlinx.coroutines.flow.MutableStateFlow(false)
@@ -94,9 +96,18 @@ class DashboardViewModel @Inject constructor(
     }
 
     fun refreshAndScrape() {
-        _isRefreshing.value = true
-        viewModelScope.launch(Dispatchers.IO) {
+        if (_isRefreshing.value) return
+        viewModelScope.launch {
+            _isRefreshing.value = true
             try {
+                // 清除所有剧集缓存
+                try {
+                    episodesCacheDao.deleteAll()
+                    Log.i(TAG, "已清除所有剧集缓存")
+                } catch (e: Exception) {
+                    Log.e(TAG, "清除剧集缓存失败: ${e.message}", e)
+                }
+                
                 val aggregated = mutableListOf<Movie>()
                 val aggregatedTv = mutableListOf<Movie>()
                 val visited = mutableSetOf<String>()

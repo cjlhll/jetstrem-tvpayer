@@ -22,9 +22,11 @@ import androidx.lifecycle.viewModelScope
 import com.google.jetstream.data.entities.MovieDetails
 import com.google.jetstream.data.repositories.MovieRepository
 import com.google.jetstream.data.database.dao.ScrapedItemDao
+import com.google.jetstream.data.database.dao.EpisodesCacheDao
 import com.google.jetstream.data.repositories.RecentlyWatchedRepository
 import com.google.jetstream.data.repositories.ScrapedMoviesStore
 import com.google.jetstream.data.repositories.ScrapedTvStore
+import com.google.jetstream.data.database.entities.EpisodesCacheEntity
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
@@ -53,6 +55,7 @@ class MovieDetailsScreenViewModel @Inject constructor(
     scrapedTvStore: ScrapedTvStore,
     private val webDavService: WebDavService,
     private val scrapedItemDao: ScrapedItemDao,
+    private val episodesCacheDao: EpisodesCacheDao,
     private val recentlyWatchedRepository: RecentlyWatchedRepository,
     private val episodeMatchingService: com.google.jetstream.data.services.EpisodeMatchingService,
     private val tvPlaybackService: com.google.jetstream.data.services.TvPlaybackService,
@@ -134,9 +137,38 @@ class MovieDetailsScreenViewModel @Inject constructor(
     /**
      * 获取指定季的剧集列表（只显示本地存在的剧集）
      */
-    fun loadEpisodes(tvId: String, seasonNumber: Int) {
+    fun loadEpisodes(tvId: String, seasonNumber: Int, forceRefresh: Boolean = false) {
         viewModelScope.launch {
+            // 创建缓存键
+            val cacheKey = "${tvId}_season${seasonNumber}"
+            
+            // 如果不强制刷新，先尝试从数据库获取缓存
+            if (!forceRefresh) {
+                val cachedEpisodesEntity = episodesCacheDao.getById(cacheKey)
+                if (cachedEpisodesEntity != null) {
+                    try {
+                        // 从JSON反序列化剧集列表
+                        val episodes = kotlinx.serialization.json.Json.decodeFromString(
+                            kotlinx.serialization.builtins.ListSerializer(com.google.jetstream.data.entities.Episode.serializer()),
+                            cachedEpisodesEntity.episodesJson
+                        )
+                        
+                        // 为每个剧集添加播放进度信息
+                        val episodesWithProgress = addPlaybackProgressToEpisodes(tvId, episodes)
+                        _episodesState.value = EpisodesUiState.Success(episodesWithProgress)
+                        android.util.Log.d("MovieDetailsVM", "使用数据库缓存: tvId=$tvId, season=$seasonNumber, count=${episodes.size}")
+                        return@launch
+                    } catch (e: Exception) {
+                        android.util.Log.e("MovieDetailsVM", "解析缓存数据失败: tvId=$tvId, season=$seasonNumber", e)
+                        // 如果解析失败，删除损坏的缓存并继续加载
+                        episodesCacheDao.deleteById(cacheKey)
+                    }
+                }
+            }
+            
+            // 设置加载状态
             _episodesState.value = EpisodesUiState.Loading
+            
             try {
                 // 获取本地季信息
                 val localSeasons = getLocalSeasonsForTv(tvId)
@@ -149,9 +181,26 @@ class MovieDetailsScreenViewModel @Inject constructor(
                 )
                 
                 if (filteredEpisodes.isNotEmpty()) {
+                    // 将剧集列表序列化为JSON并存储到数据库
+                    val episodesJson = kotlinx.serialization.json.Json.encodeToString(
+                        kotlinx.serialization.builtins.ListSerializer(com.google.jetstream.data.entities.Episode.serializer()),
+                        filteredEpisodes
+                    )
+                    
+                    val cacheEntity = EpisodesCacheEntity(
+                        id = cacheKey,
+                        tvId = tvId,
+                        seasonNumber = seasonNumber,
+                        episodesJson = episodesJson,
+                        createdAt = System.currentTimeMillis()
+                    )
+                    
+                    episodesCacheDao.insertEpisodesCache(cacheEntity)
+                    
                     // 为每个剧集添加播放进度信息
                     val episodesWithProgress = addPlaybackProgressToEpisodes(tvId, filteredEpisodes)
                     _episodesState.value = EpisodesUiState.Success(episodesWithProgress)
+                    android.util.Log.d("MovieDetailsVM", "加载并缓存到数据库: tvId=$tvId, season=$seasonNumber, count=${filteredEpisodes.size}")
                 } else {
                     _episodesState.value = EpisodesUiState.Error("本地没有找到该季的剧集文件")
                 }
@@ -217,6 +266,35 @@ class MovieDetailsScreenViewModel @Inject constructor(
      */
     fun clearEpisodes() {
         _episodesState.value = EpisodesUiState.Loading
+        _sourceInfoEpisode.value = null
+    }
+    
+    /**
+     * 清除指定TV的剧集缓存
+     */
+    fun clearEpisodesCache(tvId: String) {
+        viewModelScope.launch {
+            try {
+                episodesCacheDao.deleteByTvId(tvId)
+                android.util.Log.d("MovieDetailsVM", "已清除TV $tvId 的剧集缓存")
+            } catch (e: Exception) {
+                android.util.Log.e("MovieDetailsVM", "清除TV $tvId 的剧集缓存失败: ${e.message}", e)
+            }
+        }
+    }
+    
+    /**
+     * 清除所有剧集缓存
+     */
+    fun clearAllEpisodesCache() {
+        viewModelScope.launch {
+            try {
+                episodesCacheDao.deleteAll()
+                android.util.Log.d("MovieDetailsVM", "已清除所有剧集缓存")
+            } catch (e: Exception) {
+                android.util.Log.e("MovieDetailsVM", "清除所有剧集缓存失败", e)
+            }
+        }
     }
     
     /**

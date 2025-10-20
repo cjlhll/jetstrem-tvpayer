@@ -18,6 +18,7 @@ package com.google.jetstream.di
 
 import android.content.Context
 import com.google.jetstream.data.database.JetStreamDatabase
+import com.google.jetstream.data.database.dao.EpisodesCacheDao
 import com.google.jetstream.data.database.dao.ResourceDirectoryDao
 import com.google.jetstream.data.database.dao.RecentlyWatchedDao
 import com.google.jetstream.data.database.dao.WebDavConfigDao
@@ -56,5 +57,10 @@ object DatabaseModule {
     @Provides
     fun provideRecentlyWatchedDao(database: JetStreamDatabase): RecentlyWatchedDao {
         return database.recentlyWatchedDao()
+    }
+
+    @Provides
+    fun provideEpisodesCacheDao(database: JetStreamDatabase): EpisodesCacheDao {
+        return database.episodesCacheDao()
     }
 }

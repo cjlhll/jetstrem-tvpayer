@@ -194,6 +194,14 @@ private fun Details(
                     }
                 }
                 
+                // 当电影ID或选中的季发生变化时，加载剧集（使用缓存）
+                LaunchedEffect(movieDetails.id, selectedSeasonNumber) {
+                    if (isInitialized && seasons.isNotEmpty()) {
+                        // 这里会自动使用缓存，如果缓存存在就不会重新加载
+                        movieDetailsScreenViewModel.loadEpisodes(movieDetails.id, selectedSeasonNumber)
+                    }
+                }
+                
                 SeasonSelector(
                     seasons = seasons,
                     selectedSeason = seasons.find { it.number == selectedSeasonNumber },
@@ -201,7 +209,8 @@ private fun Details(
                         // 只有在选择不同季时才重新加载剧集
                         if (season.number != selectedSeasonNumber) {
                             selectedSeasonNumber = season.number
-                            movieDetailsScreenViewModel.loadEpisodes(movieDetails.id, season.number)
+                            // 清除当前TV的剧集缓存，确保获取最新数据
+                            movieDetailsScreenViewModel.clearEpisodesCache(movieDetails.id)
                         }
                     }
                 )

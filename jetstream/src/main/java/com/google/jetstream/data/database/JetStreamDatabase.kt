@@ -26,19 +26,22 @@ import com.google.jetstream.data.database.dao.ResourceDirectoryDao
 import com.google.jetstream.data.database.dao.WebDavConfigDao
 import com.google.jetstream.data.database.dao.ScrapedItemDao
 import com.google.jetstream.data.database.dao.RecentlyWatchedDao
+import com.google.jetstream.data.database.dao.EpisodesCacheDao
 import com.google.jetstream.data.database.entities.ResourceDirectoryEntity
 import com.google.jetstream.data.database.entities.WebDavConfigEntity
 import com.google.jetstream.data.database.entities.ScrapedItemEntity
 import com.google.jetstream.data.database.entities.RecentlyWatchedEntity
+import com.google.jetstream.data.database.entities.EpisodesCacheEntity
 
 @Database(
     entities = [
         WebDavConfigEntity::class,
         ResourceDirectoryEntity::class,
         ScrapedItemEntity::class,
-        RecentlyWatchedEntity::class
+        RecentlyWatchedEntity::class,
+        EpisodesCacheEntity::class
     ],
-    version = 8,
+    version = 10,
     exportSchema = false
 )
 abstract class JetStreamDatabase : RoomDatabase() {
@@ -47,6 +50,7 @@ abstract class JetStreamDatabase : RoomDatabase() {
     abstract fun resourceDirectoryDao(): ResourceDirectoryDao
     abstract fun scrapedItemDao(): ScrapedItemDao
     abstract fun recentlyWatchedDao(): RecentlyWatchedDao
+    abstract fun episodesCacheDao(): EpisodesCacheDao
     
     companion object {
         @Volatile
@@ -160,13 +164,42 @@ abstract class JetStreamDatabase : RoomDatabase() {
             }
         }
         
+        private val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // 创建剧集缓存表
+                database.execSQL("""
+                    CREATE TABLE episodes_cache (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        tvId TEXT NOT NULL,
+                        seasonNumber INTEGER NOT NULL,
+                        episodesJson TEXT NOT NULL,
+                        createdAt INTEGER NOT NULL
+                    )
+                """)
+                
+                // 创建索引以提高查询性能
+                database.execSQL("CREATE INDEX index_episodes_cache_tvId ON episodes_cache(tvId)")
+            }
+        }
+        
+        private val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // 检查索引是否已存在，如果不存在则创建
+                try {
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_episodes_cache_tvId ON episodes_cache(tvId)")
+                } catch (e: Exception) {
+                    // 如果创建索引失败，忽略错误（可能索引已存在）
+                }
+            }
+        }
+        
         fun getDatabase(context: Context): JetStreamDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     JetStreamDatabase::class.java,
                     "jetstream_database"
-                ).addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                ).addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance
