@@ -8,7 +8,13 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
@@ -42,21 +48,30 @@ fun SubtitleDialog(
             ) {
                 val items = listOf("Off") + languages
                 items.forEachIndexed { idx, label ->
+                    var isFocused by remember { mutableStateOf(false) }
+                    
                     ListItem(
                         selected = idx == selectedIndex,
                         onClick = { onSelectIndex(idx) },
-                        headlineContent = { Text(text = label) },
+                        modifier = Modifier.onFocusChanged { isFocused = it.isFocused },
+                        headlineContent = { 
+                            Text(
+                                text = label,
+                                color = if (isFocused) Color.Black else MaterialTheme.colorScheme.onSurface
+                            )
+                        },
                         trailingContent = {
                             if (idx == selectedIndex) {
-                                Icon(imageVector = Icons.Default.Done, contentDescription = null)
+                                Icon(
+                                    imageVector = Icons.Default.Done, 
+                                    contentDescription = null,
+                                    tint = if (isFocused) Color.Black else MaterialTheme.colorScheme.onSurface
+                                )
                             }
                         },
                         colors = ListItemDefaults.colors(
                             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            focusedContainerColor = MaterialTheme.colorScheme.inverseSurface,
-                            selectedContainerColor = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.4f),
-                            focusedContentColor = MaterialTheme.colorScheme.surface,
-                            selectedContentColor = MaterialTheme.colorScheme.surface
+                            focusedContainerColor = Color.White
                         )
                     )
                 }
