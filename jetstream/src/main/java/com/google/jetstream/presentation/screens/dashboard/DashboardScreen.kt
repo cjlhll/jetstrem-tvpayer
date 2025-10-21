@@ -63,13 +63,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.google.jetstream.data.entities.Movie
 import com.google.jetstream.presentation.screens.Screens
-import com.google.jetstream.presentation.screens.categories.CategoriesScreen
-import com.google.jetstream.presentation.screens.favourites.FavouritesScreen
 import com.google.jetstream.presentation.screens.home.HomeScreen
-import com.google.jetstream.presentation.screens.movies.MoviesScreen
 import com.google.jetstream.presentation.screens.profile.ProfileScreen
-import com.google.jetstream.presentation.screens.search.SearchScreen
-import com.google.jetstream.presentation.screens.shows.ShowsScreen
 import com.google.jetstream.presentation.utils.Padding
 
 val ParentPadding = PaddingValues(vertical = 16.dp, horizontal = 58.dp)
@@ -132,9 +127,14 @@ fun DashboardScreen(
     }
 
     var currentDestination: String? by remember { mutableStateOf(null) }
-    val currentTopBarSelectedTabIndex by remember(currentDestination) {
+    val hasTabs = TopBarTabs.isNotEmpty()
+    val currentTopBarSelectedTabIndex by remember(currentDestination, hasTabs) {
         derivedStateOf {
-            currentDestination?.let { TopBarTabs.indexOf(Screens.valueOf(it)) } ?: 0
+            if (hasTabs) {
+                currentDestination?.let { TopBarTabs.indexOf(Screens.valueOf(it)) } ?: 0
+            } else {
+                -1
+            }
         }
     }
 
@@ -158,13 +158,16 @@ fun DashboardScreen(
         onBackPressed = {
             if (!isTopBarVisible) {
                 isTopBarVisible = true
-                TopBarFocusRequesters[currentTopBarSelectedTabIndex + 1].requestFocus()
-            } else if (currentTopBarSelectedTabIndex == 0) {
+                val targetIndex = if (hasTabs) currentTopBarSelectedTabIndex + 1 else 0
+                TopBarFocusRequesters[targetIndex].requestFocus()
+            } else if (!hasTabs || currentTopBarSelectedTabIndex == 0) {
                 showExitDialog = true
             } else if (!isTopBarFocused) {
                 TopBarFocusRequesters[currentTopBarSelectedTabIndex + 1].requestFocus()
             } else {
-                TopBarFocusRequesters[1].requestFocus()
+                // Focus first tab when tabs exist, otherwise focus avatar (index 0)
+                val firstFocusable = if (hasTabs) 1 else 0
+                TopBarFocusRequesters[firstFocusable].requestFocus()
             }
         }
     ) {
@@ -196,7 +199,8 @@ fun DashboardScreen(
 
         LaunchedEffect(Unit) {
             if (!wasTopBarFocusRequestedBefore) {
-                TopBarFocusRequesters[currentTopBarSelectedTabIndex + 1].requestFocus()
+                val targetIndex = if (hasTabs) currentTopBarSelectedTabIndex + 1 else 0
+                TopBarFocusRequesters[targetIndex].requestFocus()
                 wasTopBarFocusRequestedBefore = true
             }
         }
@@ -294,39 +298,6 @@ private fun Body(
                 onScroll = updateTopBarVisibility,
                 isTopBarVisible = isTopBarVisible,
                 onShowAllClick = openMovieTypeList
-            )
-        }
-        composable(Screens.Categories()) {
-            CategoriesScreen(
-                onCategoryClick = openCategoryMovieList,
-                onScroll = updateTopBarVisibility
-            )
-        }
-        composable(Screens.Movies()) {
-            MoviesScreen(
-                onMovieClick = { movie -> openMovieDetailsScreen(movie.id) },
-                onScroll = updateTopBarVisibility,
-                isTopBarVisible = isTopBarVisible
-            )
-        }
-        composable(Screens.Shows()) {
-            ShowsScreen(
-                onTVShowClick = { movie -> openMovieDetailsScreen(movie.id) },
-                onScroll = updateTopBarVisibility,
-                isTopBarVisible = isTopBarVisible
-            )
-        }
-        composable(Screens.Favourites()) {
-            FavouritesScreen(
-                onMovieClick = openMovieDetailsScreen,
-                onScroll = updateTopBarVisibility,
-                isTopBarVisible = isTopBarVisible
-            )
-        }
-        composable(Screens.Search()) {
-            SearchScreen(
-                onMovieClick = { movie -> openMovieDetailsScreen(movie.id) },
-                onScroll = updateTopBarVisibility
             )
         }
     }

@@ -125,14 +125,15 @@ fun DashboardTopBar(
                     ),
                     label = "angle"
                 )
-                androidx.tv.material3.Button(onClick = onRefreshClick) {
+                androidx.tv.material3.IconButton(
+                    onClick = onRefreshClick,
+                    modifier = Modifier.size(32.dp)
+                ) {
                     androidx.tv.material3.Icon(
-                        imageVector = androidx.compose.material.icons.Icons.Default.Refresh,
+                        imageVector = androidx.compose.material.icons.Icons.Filled.Refresh,
                         contentDescription = "刷新",
-                        modifier = if (isRefreshing) Modifier.rotate(angle) else Modifier
+                        modifier = (if (isRefreshing) Modifier.rotate(angle) else Modifier).size(32.dp)
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    androidx.tv.material3.Text(text = if (isRefreshing) "刷新中..." else "刷新")
                 }
             }
             Row(
@@ -140,52 +141,54 @@ fun DashboardTopBar(
             ) {
                 var isTabRowFocused by remember { mutableStateOf(false) }
 
-                Spacer(modifier = Modifier.width(20.dp))
-                TabRow(
-                    modifier = Modifier
-                        .onFocusChanged {
-                            isTabRowFocused = it.isFocused || it.hasFocus
+                if (screens.isNotEmpty()) {
+                    Spacer(modifier = Modifier.width(20.dp))
+                    TabRow(
+                        modifier = Modifier
+                            .onFocusChanged {
+                                isTabRowFocused = it.isFocused || it.hasFocus
+                            },
+                        selectedTabIndex = selectedTabIndex,
+                        indicator = { tabPositions, _ ->
+                            if (selectedTabIndex >= 0) {
+                                DashboardTopBarItemIndicator(
+                                    currentTabPosition = tabPositions[selectedTabIndex],
+                                    anyTabFocused = isTabRowFocused,
+                                    shape = JetStreamCardShape
+                                )
+                            }
                         },
-                    selectedTabIndex = selectedTabIndex,
-                    indicator = { tabPositions, _ ->
-                        if (selectedTabIndex >= 0) {
-                            DashboardTopBarItemIndicator(
-                                currentTabPosition = tabPositions[selectedTabIndex],
-                                anyTabFocused = isTabRowFocused,
-                                shape = JetStreamCardShape
-                            )
-                        }
-                    },
-                    separator = { Spacer(modifier = Modifier) }
-                ) {
-                    screens.forEachIndexed { index, screen ->
-                        key(index) {
-                            Tab(
-                                modifier = Modifier
-                                    .height(32.dp)
-                                    .focusRequester(focusRequesters[index + 1]),
-                                selected = index == selectedTabIndex,
-                                onFocus = { onScreenSelection(screen) },
-                                onClick = { focusManager.moveFocus(FocusDirection.Down) },
-                            ) {
-                                if (screen.tabIcon != null) {
-                                    Icon(
-                                        screen.tabIcon,
-                                        modifier = Modifier.padding(4.dp),
-                                        contentDescription = StringConstants.Composable
-                                            .ContentDescription.DashboardSearchButton,
-                                        tint = LocalContentColor.current
-                                    )
-                                } else {
-                                    Text(
-                                        modifier = Modifier
-                                            .occupyScreenSize()
-                                            .padding(horizontal = 16.dp),
-                                        text = screen(),
-                                        style = MaterialTheme.typography.titleSmall.copy(
-                                            color = LocalContentColor.current
+                        separator = { Spacer(modifier = Modifier) }
+                    ) {
+                        screens.forEachIndexed { index, screen ->
+                            key(index) {
+                                Tab(
+                                    modifier = Modifier
+                                        .height(32.dp)
+                                        .focusRequester(focusRequesters[index + 1]),
+                                    selected = index == selectedTabIndex,
+                                    onFocus = { onScreenSelection(screen) },
+                                    onClick = { focusManager.moveFocus(FocusDirection.Down) },
+                                ) {
+                                    if (screen.tabIcon != null) {
+                                        Icon(
+                                            screen.tabIcon,
+                                            modifier = Modifier.padding(4.dp),
+                                            contentDescription = StringConstants.Composable
+                                                .ContentDescription.DashboardSearchButton,
+                                            tint = LocalContentColor.current
                                         )
-                                    )
+                                    } else {
+                                        Text(
+                                            modifier = Modifier
+                                                .occupyScreenSize()
+                                                .padding(horizontal = 16.dp),
+                                            text = screen(),
+                                            style = MaterialTheme.typography.titleSmall.copy(
+                                                color = LocalContentColor.current
+                                            )
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -212,7 +215,7 @@ private fun JetStreamLogo(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
-            Icons.Default.PlayCircle,
+            Icons.Filled.PlayCircle,
             contentDescription = StringConstants.Composable
                 .ContentDescription.BrandLogoImage,
             modifier = Modifier
