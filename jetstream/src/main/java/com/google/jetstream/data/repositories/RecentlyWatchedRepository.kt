@@ -53,16 +53,10 @@ class RecentlyWatchedRepository @Inject constructor(
     fun getRecentlyWatchedMovies(limit: Int = 20): Flow<List<Movie>> {
         return recentlyWatchedDao.getRecentlyWatched(limit).map { entities ->
             entities.map { entity ->
-                // 对于电视剧，尝试获取当前播放集的封面
-                val posterUri = if (entity.type == "tv" && entity.episodeId != null && 
-                    entity.seasonNumber != null && entity.episodeNumber != null) {
-                    // 尝试获取剧集封面，如果失败则使用电视剧主封面
-                    getEpisodePosterUri(entity.movieId, entity.seasonNumber, entity.episodeNumber) 
-                        ?: entity.backdropUri
-                } else {
-                    entity.backdropUri // 电影或无剧集信息的电视剧使用背景图
-                }
-                
+                // 为了首页瞬时渲染，避免在映射阶段进行任何网络请求。
+                // 统一使用已有的背景图/海报，保证立刻可见。
+                val posterUri = if (entity.backdropUri.isNotEmpty()) entity.backdropUri else entity.posterUri
+
                 Movie(
                     id = entity.movieId,
                     videoUri = "", // VideoUri在播放时会从ScrapedItemEntity或其他源获取

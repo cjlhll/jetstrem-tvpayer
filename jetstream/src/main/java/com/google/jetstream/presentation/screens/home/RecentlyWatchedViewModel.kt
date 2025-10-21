@@ -14,10 +14,11 @@ class RecentlyWatchedViewModel @Inject constructor(
     private val recentlyWatchedRepository: RecentlyWatchedRepository
 ) : ViewModel() {
     
+    // 使用Eager收集以预热数据，进入首页即可立刻获得一次本地数据快照
     val recentlyWatchedMovies = recentlyWatchedRepository.getRecentlyWatchedMovies(limit = 10)
         .stateIn(
             scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5_000),
+            started = SharingStarted.Eagerly,
             initialValue = emptyList()
         )
 }
