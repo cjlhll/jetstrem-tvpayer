@@ -20,6 +20,7 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
 import com.google.jetstream.data.webdav.WebDavService
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,12 +29,15 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.C
@@ -58,6 +62,7 @@ import com.google.jetstream.presentation.screens.videoPlayer.components.VideoPla
 import com.google.jetstream.presentation.screens.videoPlayer.components.rememberPlayer
 import com.google.jetstream.presentation.screens.videoPlayer.components.PlayerSubtitles
 import com.google.jetstream.presentation.screens.videoPlayer.components.SubtitleDialog
+import com.google.jetstream.presentation.screens.videoPlayer.components.HoldSeekProgressBar
 import com.google.jetstream.presentation.screens.videoPlayer.components.rememberVideoPlayerPulseState
 import com.google.jetstream.presentation.screens.videoPlayer.components.rememberVideoPlayerState
 import com.google.jetstream.presentation.utils.handleDPadKeyEvents
@@ -68,6 +73,10 @@ import com.google.jetstream.data.subs.SubtitleFetcher
 import okhttp3.OkHttpClient
 import java.io.File
 import android.view.KeyEvent
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 object VideoPlayerScreen {
     const val MovieIdBundleKey = "movieId"
@@ -157,6 +166,52 @@ fun VideoPlayerScreenContent(
     // Subtitle popover & language labels state
     val showSubtitlePopoverState = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     val assrtLanguagesState = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<List<String>>(emptyList()) }
+
+    // Hold-seek states
+    val isHoldSeeking = remember { mutableStateOf(false) }
+    val holdSeekPreviewMs = remember { mutableStateOf(0L) }
+    val holdSeekDirection = remember { mutableStateOf(0) }
+    val coroutineScope = rememberCoroutineScope()
+    var holdSeekJob by remember { mutableStateOf<Job?>(null) }
+    var holdStarterJob by remember { mutableStateOf<Job?>(null) }
+    var leftPressed by remember { mutableStateOf(false) }
+    var rightPressed by remember { mutableStateOf(false) }
+
+    fun startHold(direction: Int) {
+        if (holdSeekJob != null) return
+        holdSeekDirection.value = direction
+        isHoldSeeking.value = true
+        holdSeekPreviewMs.value = exoPlayer.currentPosition
+        val duration = exoPlayer.duration.coerceAtLeast(0L)
+        holdSeekJob = coroutineScope.launch {
+            val startAt = System.currentTimeMillis()
+            val intervalMs = 220L
+            while (isActive) {
+                val elapsed = System.currentTimeMillis() - startAt
+                // Accelerate step size based on hold duration (2x faster)
+                val stepMs = when {
+                    elapsed < 1000L -> 6000L
+                    elapsed < 3000L -> 14000L
+                    elapsed < 6000L -> 24000L
+                    else -> 40000L
+                }
+                val next = (holdSeekPreviewMs.value + direction * stepMs)
+                    .coerceIn(0L, if (duration > 0) duration else 0L)
+                holdSeekPreviewMs.value = next
+                try { exoPlayer.seekTo(next) } catch (_: Throwable) {}
+                delay(intervalMs)
+            }
+        }
+    }
+
+    fun stopHold() {
+        holdStarterJob?.cancel()
+        holdStarterJob = null
+        holdSeekJob?.cancel()
+        holdSeekJob = null
+        isHoldSeeking.value = false
+        holdSeekDirection.value = 0
+    }
 
     // 在离开页面或销毁时停止并释放播放器，避免后台继续播放
     androidx.compose.runtime.DisposableEffect(exoPlayer) {
@@ -267,6 +322,53 @@ fun VideoPlayerScreenContent(
     Box(
         Modifier
             .onPreviewKeyEvent {
+                // Handle long-press hold-seek when controls are hidden
+                if (!videoPlayerState.isControlsVisible) {
+                    when (it.nativeKeyEvent.keyCode) {
+                        KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_SYSTEM_NAVIGATION_LEFT -> {
+                            if (it.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                                leftPressed = true
+                                if (holdStarterJob == null && holdSeekJob == null) {
+                                    holdStarterJob = coroutineScope.launch {
+                                        delay(300)
+                                        if (leftPressed && holdSeekJob == null) startHold(-1)
+                                    }
+                                }
+                                // Don't consume to allow single-tap to be handled on ACTION_UP by dPadEvents
+                                return@onPreviewKeyEvent false
+                            } else if (it.nativeKeyEvent.action == KeyEvent.ACTION_UP) {
+                                leftPressed = false
+                                holdStarterJob?.cancel(); holdStarterJob = null
+                                if (holdSeekJob != null) {
+                                    stopHold()
+                                    return@onPreviewKeyEvent true
+                                }
+                                return@onPreviewKeyEvent false
+                            }
+                        }
+                        KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_SYSTEM_NAVIGATION_RIGHT -> {
+                            if (it.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                                rightPressed = true
+                                if (holdStarterJob == null && holdSeekJob == null) {
+                                    holdStarterJob = coroutineScope.launch {
+                                        delay(300)
+                                        if (rightPressed && holdSeekJob == null) startHold(1)
+                                    }
+                                }
+                                return@onPreviewKeyEvent false
+                            } else if (it.nativeKeyEvent.action == KeyEvent.ACTION_UP) {
+                                rightPressed = false
+                                holdStarterJob?.cancel(); holdStarterJob = null
+                                if (holdSeekJob != null) {
+                                    stopHold()
+                                    return@onPreviewKeyEvent true
+                                }
+                                return@onPreviewKeyEvent false
+                            }
+                        }
+                    }
+                }
+
                 if (it.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_BACK && it.nativeKeyEvent.action == KeyEvent.ACTION_UP) {
                     if (showSubtitlePopoverState.value) {
                         showSubtitlePopoverState.value = false
@@ -304,7 +406,8 @@ fun VideoPlayerScreenContent(
             isPlaying = exoPlayer.isPlaying,
             isControlsVisible = videoPlayerState.isControlsVisible,
             centerButton = { VideoPlayerPulse(pulseState) },
-            subtitles = { PlayerSubtitles(player = exoPlayer) },
+            // While hold-seeking, do not render subtitles (avoid updating position during fast seek)
+            subtitles = { if (!isHoldSeeking.value) PlayerSubtitles(player = exoPlayer) },
             showControls = videoPlayerState::showControls,
             controls = {
                 VideoPlayerControls(
@@ -316,6 +419,18 @@ fun VideoPlayerScreenContent(
                 )
             }
         )
+
+        // Separate progress bar shown only while hold-seeking with hidden controls
+        if (isHoldSeeking.value) {
+            HoldSeekProgressBar(
+                progress = if (exoPlayer.duration > 0) holdSeekPreviewMs.value.toFloat() / exoPlayer.duration.toFloat() else 0f,
+                currentPositionMs = holdSeekPreviewMs.value,
+                durationMs = exoPlayer.duration,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 96.dp)
+            )
+        }
 
         if (showSubtitlePopoverState.value) {
             val enabled = exoPlayer.currentTracks.groups.any { it.type == C.TRACK_TYPE_TEXT && it.isSelected }
