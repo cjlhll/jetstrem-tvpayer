@@ -43,6 +43,10 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        // ASSRT API token. Configure via gradle.properties: ASSRT_TOKEN=your_token
+        val assrtToken = project.findProperty("ASSRT_TOKEN") as String? ?: ""
+        buildConfigField("String", "ASSRT_TOKEN", "\"$assrtToken\"")
     }
 
     buildTypes {
@@ -111,6 +115,9 @@ dependencies {
 
     // JSON parser
     implementation(libs.kotlinx.serialization)
+
+    // OkHttp for ASSRT client
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     // Media3
     implementation(libs.androidx.media3.exoplayer)

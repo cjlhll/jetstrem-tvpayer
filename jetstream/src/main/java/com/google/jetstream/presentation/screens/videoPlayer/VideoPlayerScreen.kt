@@ -35,8 +35,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.C
-import androidx.media3.common.MimeTypes
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.compose.PlayerSurface
@@ -58,6 +58,9 @@ import com.google.jetstream.presentation.screens.videoPlayer.components.PlayerSu
 import com.google.jetstream.presentation.screens.videoPlayer.components.rememberVideoPlayerPulseState
 import com.google.jetstream.presentation.screens.videoPlayer.components.rememberVideoPlayerState
 import com.google.jetstream.presentation.utils.handleDPadKeyEvents
+import com.google.jetstream.BuildConfig
+import com.google.jetstream.data.subs.AssrtApi
+import com.google.jetstream.data.subs.SubtitleMime
 
 object VideoPlayerScreen {
     const val MovieIdBundleKey = "movieId"
@@ -183,12 +186,12 @@ fun VideoPlayerScreenContent(
 
         android.util.Log.i("VideoPlayer", "准备播放 URL: ${movieDetails.videoUri}, startPosition: ${startPositionMs}ms")
     LaunchedEffect(exoPlayer, movieDetails, startPositionMs) {
-        val item = movieDetails.intoMediaItem()
-        android.util.Log.d("VideoPlayer", "addMediaItem: uri=${item.localConfiguration?.uri} subCount=${item.localConfiguration?.subtitleConfigurations?.size}")
-        item.localConfiguration?.subtitleConfigurations?.forEachIndexed { idx, sc ->
+        val mediaItem = movieDetails.intoMediaItemDynamicSubAsync()
+        android.util.Log.d("VideoPlayer", "addMediaItem: uri=${mediaItem.localConfiguration?.uri} subCount=${mediaItem.localConfiguration?.subtitleConfigurations?.size}")
+        mediaItem.localConfiguration?.subtitleConfigurations?.forEachIndexed { idx, sc ->
             android.util.Log.d("VideoPlayer", "subtitle[$idx]: uri=${sc.uri} mime=${sc.mimeType} lang=${sc.language} flags=${sc.selectionFlags}")
         }
-        exoPlayer.addMediaItem(item)
+        exoPlayer.addMediaItem(mediaItem)
         exoPlayer.prepare()
         
         // 如果有播放记录，设置播放位置
@@ -306,35 +309,40 @@ private fun Modifier.dPadEvents(
     }
 )
 
-private const val FIXED_SUBTITLE_URL = "https://raw.githubusercontent.com/cjlhll/openclash-rules/refs/heads/main/Shaolin.Soccer.2001.CHINESE.1080p.BluRay.x264.DTS-HD.MA.5.1-FGT.vtt"
-
-private fun MovieDetails.intoMediaItem(): MediaItem {
-    return MediaItem.Builder()
-        .setUri(videoUri)
-        .setSubtitleConfigurations(
-            listOf(
-                MediaItem.SubtitleConfiguration
-                    .Builder(Uri.parse(FIXED_SUBTITLE_URL))
-                    .setMimeType(MimeTypes.TEXT_VTT)
-                    .setLanguage("zh")
-                    .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
-                    .build()
-            )
-        ).build()
+private suspend fun MovieDetails.intoMediaItemDynamicSubAsync(): MediaItem {
+    val assrtToken = BuildConfig.ASSRT_TOKEN
+    val builder = MediaItem.Builder().setUri(videoUri)
+    val subs = mutableListOf<MediaItem.SubtitleConfiguration>()
+    try {
+        if (!assrtToken.isNullOrBlank()) {
+            val api = AssrtApi(assrtToken)
+            val keyword = name.ifBlank { director.ifBlank { releaseDate } }
+            val id = api.searchOne(keyword)
+            android.util.Log.d("VideoPlayer", "ASSRT search keyword=$keyword id=$id")
+            if (id != null) {
+                val urls = api.detail(id)
+                android.util.Log.d("VideoPlayer", "ASSRT detail urls=${urls.size}")
+                val pick = urls.firstOrNull { SubtitleMime.fromUrl(it) != null }
+                if (pick != null) {
+                    val mime = SubtitleMime.fromUrl(pick) ?: MimeTypes.TEXT_VTT
+                    android.util.Log.d("VideoPlayer", "ASSRT pick url=$pick mime=$mime")
+                    subs += MediaItem.SubtitleConfiguration
+                        .Builder(Uri.parse(pick))
+                        .setMimeType(mime)
+                        .setLanguage("zh")
+                        .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                        .build()
+                }
+            }
+        }
+    } catch (t: Throwable) {
+        android.util.Log.w("VideoPlayer", "ASSRT failed: ${t.message}")
+    }
+    return builder.setSubtitleConfigurations(subs).build()
 }
 
 private fun Movie.intoMediaItem(): MediaItem {
     return MediaItem.Builder()
         .setUri(videoUri)
-        .setSubtitleConfigurations(
-            listOf(
-                MediaItem.SubtitleConfiguration
-                    .Builder(Uri.parse(FIXED_SUBTITLE_URL))
-                    .setMimeType(MimeTypes.TEXT_VTT)
-                    .setLanguage("zh")
-                    .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
-                    .build()
-            )
-        )
         .build()
 }
