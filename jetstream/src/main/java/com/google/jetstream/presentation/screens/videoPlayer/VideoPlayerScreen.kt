@@ -61,6 +61,8 @@ import com.google.jetstream.presentation.utils.handleDPadKeyEvents
 import com.google.jetstream.BuildConfig
 import com.google.jetstream.data.subs.AssrtApi
 import com.google.jetstream.data.subs.SubtitleMime
+import com.google.jetstream.data.subs.SubtitleFetcher
+import okhttp3.OkHttpClient
 
 object VideoPlayerScreen {
     const val MovieIdBundleKey = "movieId"
@@ -186,7 +188,7 @@ fun VideoPlayerScreenContent(
 
         android.util.Log.i("VideoPlayer", "准备播放 URL: ${movieDetails.videoUri}, startPosition: ${startPositionMs}ms")
     LaunchedEffect(exoPlayer, movieDetails, startPositionMs) {
-        val mediaItem = movieDetails.intoMediaItemDynamicSubAsync()
+        val mediaItem = movieDetails.intoMediaItemDynamicSubAsync(cacheDir = context.cacheDir)
         android.util.Log.d("VideoPlayer", "addMediaItem: uri=${mediaItem.localConfiguration?.uri} subCount=${mediaItem.localConfiguration?.subtitleConfigurations?.size}")
         mediaItem.localConfiguration?.subtitleConfigurations?.forEachIndexed { idx, sc ->
             android.util.Log.d("VideoPlayer", "subtitle[$idx]: uri=${sc.uri} mime=${sc.mimeType} lang=${sc.language} flags=${sc.selectionFlags}")
@@ -309,7 +311,7 @@ private fun Modifier.dPadEvents(
     }
 )
 
-private suspend fun MovieDetails.intoMediaItemDynamicSubAsync(): MediaItem {
+private suspend fun MovieDetails.intoMediaItemDynamicSubAsync(cacheDir: java.io.File): MediaItem {
     val assrtToken = BuildConfig.ASSRT_TOKEN
     val builder = MediaItem.Builder().setUri(videoUri)
     val subs = mutableListOf<MediaItem.SubtitleConfiguration>()
@@ -326,8 +328,15 @@ private suspend fun MovieDetails.intoMediaItemDynamicSubAsync(): MediaItem {
                 if (pick != null) {
                     val mime = SubtitleMime.fromUrl(pick) ?: MimeTypes.TEXT_VTT
                     android.util.Log.d("VideoPlayer", "ASSRT pick url=$pick mime=$mime")
+                    // 下载并转成 UTF-8 缓存文件，避免中文乱码
+                    val tmp = SubtitleFetcher.fetchToUtf8File(
+                        url = pick,
+                        client = OkHttpClient(),
+                        cacheDir = cacheDir
+                    )
+                    val uri = if (tmp != null) Uri.fromFile(tmp) else Uri.parse(pick)
                     subs += MediaItem.SubtitleConfiguration
-                        .Builder(Uri.parse(pick))
+                        .Builder(uri)
                         .setMimeType(mime)
                         .setLanguage("zh")
                         .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)

@@ -78,7 +78,7 @@ class AssrtApi(
     suspend fun searchOne(keyword: String): Int? = withContext(Dispatchers.IO) {
         try {
             val q = URLEncoder.encode(keyword, "UTF-8")
-            val url = "$base/sub/search?token=${token}&q=${q}&cnt=1&pos=0&no_muxer=1"
+            val url = "$base/sub/search?token=${token}&q=${q}"
             val req = Request.Builder().url(url).get().build()
             httpClient.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) {
@@ -88,7 +88,21 @@ class AssrtApi(
                 val body = resp.body?.string() ?: return@withContext null
                 val parsed = json.decodeFromString(AssrtSearchResponse.serializer(), body)
                 if (parsed.status != 0) return@withContext null
-                return@withContext parsed.sub.subs.firstOrNull()?.id
+                val subs = parsed.sub.subs
+                val kwLower = keyword.lowercase()
+                val hasSubtypeAndNameMatch = subs.firstOrNull { it.subtype?.isNotBlank() == true && (it.videoname?.lowercase()?.contains(kwLower) == true) }
+                if (hasSubtypeAndNameMatch != null) {
+                    Log.d("AssrtApi", "pick by subtype+videoname contains: id=${hasSubtypeAndNameMatch.id} videoname=${hasSubtypeAndNameMatch.videoname}")
+                    return@withContext hasSubtypeAndNameMatch.id
+                }
+                val hasSubtype = subs.firstOrNull { it.subtype?.isNotBlank() == true }
+                if (hasSubtype != null) {
+                    Log.d("AssrtApi", "pick by subtype only: id=${hasSubtype.id} videoname=${hasSubtype.videoname}")
+                    return@withContext hasSubtype.id
+                }
+                val fallback = subs.firstOrNull()
+                Log.d("AssrtApi", "fallback first id=${fallback?.id} videoname=${fallback?.videoname}")
+                return@withContext fallback?.id
             }
         } catch (e: Throwable) {
             Log.w("AssrtApi", "search error", e)
