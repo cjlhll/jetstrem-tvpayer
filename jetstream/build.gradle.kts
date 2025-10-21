@@ -145,6 +145,9 @@ dependencies {
     // Compose Previews
     debugImplementation(libs.androidx.compose.ui.tooling)
 
+    // Testing
+    testImplementation("junit:junit:4.13.2")
+
     // For baseline profile generation
     baselineProfile(project(":benchmark"))
 }

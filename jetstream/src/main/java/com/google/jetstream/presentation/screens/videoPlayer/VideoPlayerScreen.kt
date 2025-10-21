@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,6 +56,7 @@ import com.google.jetstream.presentation.screens.videoPlayer.components.VideoPla
 import com.google.jetstream.presentation.screens.videoPlayer.components.VideoPlayerState
 import com.google.jetstream.presentation.screens.videoPlayer.components.rememberPlayer
 import com.google.jetstream.presentation.screens.videoPlayer.components.PlayerSubtitles
+import com.google.jetstream.presentation.screens.videoPlayer.components.SubtitleDialog
 import com.google.jetstream.presentation.screens.videoPlayer.components.rememberVideoPlayerPulseState
 import com.google.jetstream.presentation.screens.videoPlayer.components.rememberVideoPlayerState
 import com.google.jetstream.presentation.utils.handleDPadKeyEvents
@@ -63,6 +65,7 @@ import com.google.jetstream.data.subs.AssrtApi
 import com.google.jetstream.data.subs.SubtitleMime
 import com.google.jetstream.data.subs.SubtitleFetcher
 import okhttp3.OkHttpClient
+import java.io.File
 
 object VideoPlayerScreen {
     const val MovieIdBundleKey = "movieId"
@@ -149,6 +152,10 @@ fun VideoPlayerScreenContent(
 
     val exoPlayer = rememberPlayer(context, headers)
 
+    // Subtitle popover & language labels state
+    val showSubtitlePopoverState = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    val assrtLanguagesState = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<List<String>>(emptyList()) }
+
     // 在离开页面或销毁时停止并释放播放器，避免后台继续播放
     androidx.compose.runtime.DisposableEffect(exoPlayer) {
         onDispose {
@@ -188,7 +195,8 @@ fun VideoPlayerScreenContent(
 
         android.util.Log.i("VideoPlayer", "准备播放 URL: ${movieDetails.videoUri}, startPosition: ${startPositionMs}ms")
     LaunchedEffect(exoPlayer, movieDetails, startPositionMs) {
-        val mediaItem = movieDetails.intoMediaItemDynamicSubAsync(cacheDir = context.cacheDir)
+        val (mediaItem, langs) = movieDetails.intoMediaItemDynamicSubAsync(cacheDir = context.cacheDir)
+        assrtLanguagesState.value = langs
         android.util.Log.d("VideoPlayer", "addMediaItem: uri=${mediaItem.localConfiguration?.uri} subCount=${mediaItem.localConfiguration?.subtitleConfigurations?.size}")
         mediaItem.localConfiguration?.subtitleConfigurations?.forEachIndexed { idx, sc ->
             android.util.Log.d("VideoPlayer", "subtitle[$idx]: uri=${sc.uri} mime=${sc.mimeType} lang=${sc.language} flags=${sc.selectionFlags}")
@@ -280,9 +288,26 @@ fun VideoPlayerScreenContent(
                     movieDetails = movieDetails,
                     focusRequester = focusRequester,
                     onShowControls = { videoPlayerState.showControls(exoPlayer.isPlaying) },
+                    onClickSubtitles = { showSubtitlePopoverState.value = true }
                 )
             }
         )
+
+        if (showSubtitlePopoverState.value) {
+            val enabled = exoPlayer.currentTracks.groups.any { it.type == C.TRACK_TYPE_TEXT && it.isSelected }
+            SubtitleDialog(
+                show = true,
+                onDismissRequest = { showSubtitlePopoverState.value = false },
+                languages = assrtLanguagesState.value,
+                selectedIndex = if (enabled) 1 else 0,
+                onSelectIndex = { idx ->
+                    val enable = idx != 0
+                    val params = exoPlayer.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !enable).build()
+                    exoPlayer.trackSelectionParameters = params
+                    showSubtitlePopoverState.value = false
+                }
+            )
+        }
     }
 }
 
@@ -311,23 +336,25 @@ private fun Modifier.dPadEvents(
     }
 )
 
-private suspend fun MovieDetails.intoMediaItemDynamicSubAsync(cacheDir: java.io.File): MediaItem {
+private suspend fun MovieDetails.intoMediaItemDynamicSubAsync(cacheDir: File): Pair<MediaItem, List<String>> {
     val assrtToken = BuildConfig.ASSRT_TOKEN
     val builder = MediaItem.Builder().setUri(videoUri)
     val subs = mutableListOf<MediaItem.SubtitleConfiguration>()
+    var selectedLangs: List<String> = emptyList()
     try {
         if (!assrtToken.isNullOrBlank()) {
             val api = AssrtApi(assrtToken)
             val keyword = name.ifBlank { director.ifBlank { releaseDate } }
-            val id = api.searchOne(keyword)
-            android.util.Log.d("VideoPlayer", "ASSRT search keyword=$keyword id=$id")
-            if (id != null) {
-                val urls = api.detail(id)
+            val selected = api.searchBest(keyword)
+            android.util.Log.d("VideoPlayer", "ASSRT search keyword=$keyword id=${selected?.id} langs=${selected?.languages}")
+            selectedLangs = selected?.languages ?: emptyList()
+            if (selected?.id != null) {
+                val urls = api.detail(selected.id)
                 android.util.Log.d("VideoPlayer", "ASSRT detail urls=${urls.size}")
                 val pick = urls.firstOrNull { SubtitleMime.fromUrl(it) != null }
                 if (pick != null) {
                     val mime = SubtitleMime.fromUrl(pick) ?: MimeTypes.TEXT_VTT
-                    android.util.Log.d("VideoPlayer", "ASSRT pick url=$pick mime=$mime")
+                    android.util.Log.d("VideoPlayer", "ASSRT pick url=$pick mime=$mime langs=${selected.languages}")
                     // 下载并转成 UTF-8 缓存文件，避免中文乱码
                     val tmp = SubtitleFetcher.fetchToUtf8File(
                         url = pick,
@@ -347,7 +374,7 @@ private suspend fun MovieDetails.intoMediaItemDynamicSubAsync(cacheDir: java.io.
     } catch (t: Throwable) {
         android.util.Log.w("VideoPlayer", "ASSRT failed: ${t.message}")
     }
-    return builder.setSubtitleConfigurations(subs).build()
+    return Pair(builder.setSubtitleConfigurations(subs).build(), selectedLangs)
 }
 
 private fun Movie.intoMediaItem(): MediaItem {
