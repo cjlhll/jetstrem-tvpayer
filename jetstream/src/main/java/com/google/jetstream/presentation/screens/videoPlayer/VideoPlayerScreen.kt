@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.C
@@ -66,6 +67,7 @@ import com.google.jetstream.data.subs.SubtitleMime
 import com.google.jetstream.data.subs.SubtitleFetcher
 import okhttp3.OkHttpClient
 import java.io.File
+import android.view.KeyEvent
 
 object VideoPlayerScreen {
     const val MovieIdBundleKey = "movieId"
@@ -232,29 +234,51 @@ fun VideoPlayerScreenContent(
     }
 
     BackHandler(onBack = {
+        // 1) 若字幕弹窗打开，先关闭弹窗
+        if (showSubtitlePopoverState.value) {
+            showSubtitlePopoverState.value = false
+            return@BackHandler
+        }
+
+        // 2) 若控制栏可见，先隐藏控制栏
         if (videoPlayerState.isControlsVisible) {
             videoPlayerState.hideControls()
-        } else {
-            try {
-                // 保存播放进度
-                val currentPosition = exoPlayer.currentPosition
-                val duration = exoPlayer.duration
-                if (currentPosition > 0 && duration > 0) {
-                    onSaveProgress(currentPosition, duration)
-                }
-                
-                exoPlayer.playWhenReady = false
-                exoPlayer.stop()
-                exoPlayer.clearMediaItems()
-            } catch (_: Throwable) {}
-            onBackPressed()
+            return@BackHandler
         }
+
+        // 3) 控制栏已隐藏，则退出播放器
+        try {
+            // 保存播放进度
+            val currentPosition = exoPlayer.currentPosition
+            val duration = exoPlayer.duration
+            if (currentPosition > 0 && duration > 0) {
+                onSaveProgress(currentPosition, duration)
+            }
+            
+            exoPlayer.playWhenReady = false
+            exoPlayer.stop()
+            exoPlayer.clearMediaItems()
+        } catch (_: Throwable) {}
+        onBackPressed()
     })
 
     val pulseState = rememberVideoPlayerPulseState()
 
     Box(
         Modifier
+            .onPreviewKeyEvent {
+                if (it.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_BACK && it.nativeKeyEvent.action == KeyEvent.ACTION_UP) {
+                    if (showSubtitlePopoverState.value) {
+                        showSubtitlePopoverState.value = false
+                        return@onPreviewKeyEvent true
+                    }
+                    if (videoPlayerState.isControlsVisible) {
+                        videoPlayerState.hideControls()
+                        return@onPreviewKeyEvent true
+                    }
+                }
+                false
+            }
             .dPadEvents(
                 exoPlayer,
                 videoPlayerState,
