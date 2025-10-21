@@ -35,6 +35,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.C
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
@@ -53,6 +54,7 @@ import com.google.jetstream.presentation.screens.videoPlayer.components.VideoPla
 import com.google.jetstream.presentation.screens.videoPlayer.components.VideoPlayerPulseState
 import com.google.jetstream.presentation.screens.videoPlayer.components.VideoPlayerState
 import com.google.jetstream.presentation.screens.videoPlayer.components.rememberPlayer
+import com.google.jetstream.presentation.screens.videoPlayer.components.PlayerSubtitles
 import com.google.jetstream.presentation.screens.videoPlayer.components.rememberVideoPlayerPulseState
 import com.google.jetstream.presentation.screens.videoPlayer.components.rememberVideoPlayerState
 import com.google.jetstream.presentation.utils.handleDPadKeyEvents
@@ -181,7 +183,12 @@ fun VideoPlayerScreenContent(
 
         android.util.Log.i("VideoPlayer", "准备播放 URL: ${movieDetails.videoUri}, startPosition: ${startPositionMs}ms")
     LaunchedEffect(exoPlayer, movieDetails, startPositionMs) {
-        exoPlayer.addMediaItem(movieDetails.intoMediaItem())
+        val item = movieDetails.intoMediaItem()
+        android.util.Log.d("VideoPlayer", "addMediaItem: uri=${item.localConfiguration?.uri} subCount=${item.localConfiguration?.subtitleConfigurations?.size}")
+        item.localConfiguration?.subtitleConfigurations?.forEachIndexed { idx, sc ->
+            android.util.Log.d("VideoPlayer", "subtitle[$idx]: uri=${sc.uri} mime=${sc.mimeType} lang=${sc.language} flags=${sc.selectionFlags}")
+        }
+        exoPlayer.addMediaItem(item)
         exoPlayer.prepare()
         
         // 如果有播放记录，设置播放位置
@@ -260,7 +267,7 @@ fun VideoPlayerScreenContent(
             isPlaying = exoPlayer.isPlaying,
             isControlsVisible = videoPlayerState.isControlsVisible,
             centerButton = { VideoPlayerPulse(pulseState) },
-            subtitles = { /* TODO Implement subtitles */ },
+            subtitles = { PlayerSubtitles(player = exoPlayer) },
             showControls = videoPlayerState::showControls,
             controls = {
                 VideoPlayerControls(
@@ -299,22 +306,20 @@ private fun Modifier.dPadEvents(
     }
 )
 
+private const val FIXED_SUBTITLE_URL = "https://raw.githubusercontent.com/cjlhll/openclash-rules/refs/heads/main/Shaolin.Soccer.2001.CHINESE.1080p.BluRay.x264.DTS-HD.MA.5.1-FGT.vtt"
+
 private fun MovieDetails.intoMediaItem(): MediaItem {
     return MediaItem.Builder()
         .setUri(videoUri)
         .setSubtitleConfigurations(
-            if (subtitleUri == null) {
-                emptyList()
-            } else {
-                listOf(
-                    MediaItem.SubtitleConfiguration
-                        .Builder(Uri.parse(subtitleUri))
-                        .setMimeType("application/vtt")
-                        .setLanguage("en")
-                        .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
-                        .build()
-                )
-            }
+            listOf(
+                MediaItem.SubtitleConfiguration
+                    .Builder(Uri.parse(FIXED_SUBTITLE_URL))
+                    .setMimeType(MimeTypes.TEXT_VTT)
+                    .setLanguage("zh")
+                    .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                    .build()
+            )
         ).build()
 }
 
@@ -322,18 +327,14 @@ private fun Movie.intoMediaItem(): MediaItem {
     return MediaItem.Builder()
         .setUri(videoUri)
         .setSubtitleConfigurations(
-            if (subtitleUri == null) {
-                emptyList()
-            } else {
-                listOf(
-                    MediaItem.SubtitleConfiguration
-                        .Builder(Uri.parse(subtitleUri))
-                        .setMimeType("application/vtt")
-                        .setLanguage("en")
-                        .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
-                        .build()
-                )
-            }
+            listOf(
+                MediaItem.SubtitleConfiguration
+                    .Builder(Uri.parse(FIXED_SUBTITLE_URL))
+                    .setMimeType(MimeTypes.TEXT_VTT)
+                    .setLanguage("zh")
+                    .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                    .build()
+            )
         )
         .build()
 }

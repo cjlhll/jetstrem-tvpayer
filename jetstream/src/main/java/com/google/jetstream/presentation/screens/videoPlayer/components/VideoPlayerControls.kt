@@ -29,6 +29,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
+import android.util.Log
 import com.google.jetstream.data.entities.MovieDetails
 import com.google.jetstream.data.util.StringConstants
 
@@ -40,6 +42,12 @@ fun VideoPlayerControls(
     onShowControls: () -> Unit = {},
 ) {
     val isPlaying = player.isPlaying
+
+    try {
+        val tracks: Tracks = player.currentTracks
+        val hasText = tracks.groups.any { it.type == androidx.media3.common.C.TRACK_TYPE_TEXT }
+        Log.d("VideoPlayerControls", "currentTracks: hasText=$hasText groups=${tracks.groups.size}")
+    } catch (_: Throwable) {}
 
     VideoPlayerMainFrame(
         mediaTitle = {
