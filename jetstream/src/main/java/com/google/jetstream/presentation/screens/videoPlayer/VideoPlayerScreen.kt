@@ -408,7 +408,7 @@ fun VideoPlayerScreenContent(
             centerButton = { VideoPlayerPulse(pulseState) },
             // While hold-seeking, do not render subtitles (avoid updating position during fast seek)
             subtitles = { if (!isHoldSeeking.value) PlayerSubtitles(player = exoPlayer) },
-            showControls = videoPlayerState::showControls,
+            showControls = { if (!isHoldSeeking.value) videoPlayerState.showControls(exoPlayer.isPlaying) },
             controls = {
                 VideoPlayerControls(
                     player = exoPlayer,

@@ -32,12 +32,6 @@ enum class ProfileScreens(
     val icon: ImageVector,
     private val title: String? = null,
 ) {
-    Accounts(Icons.Default.Person),
-    About(Icons.Default.Info),
-    Subtitles(Icons.Default.Subtitles),
-    Language(Icons.Default.Translate),
-    SearchHistory(title = "Search history", icon = Icons.Default.Search),
-    HelpAndSupport(title = "Help and Support", icon = Icons.Default.Support),
     WebDavBrowser(title = "资源目录", icon = Icons.Default.Folder);
 
     operator fun invoke() = name
