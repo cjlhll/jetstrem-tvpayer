@@ -93,6 +93,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
+    // Compose UI core for AndroidView interop
+    implementation("androidx.compose.ui:ui")
     implementation(libs.androidx.compose.ui.tooling.preview)
 
     // extra material icons
@@ -122,6 +124,8 @@ dependencies {
     // Media3
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.ui)
+    // Core UI widgets (SubtitleView) required for native subtitle rendering
+    implementation("androidx.media3:media3-ui:${libs.versions.media3.get()}")
 
     // SplashScreen
     implementation(libs.androidx.core.splashscreen)

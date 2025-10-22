@@ -166,6 +166,9 @@ fun VideoPlayerScreenContent(
     // Subtitle popover & language labels state
     val showSubtitlePopoverState = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     val assrtLanguagesState = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<List<String>>(emptyList()) }
+    // External subtitle delay in milliseconds (negative = show earlier, positive = show later)
+    val subtitleDelayMsState = remember { mutableStateOf(0) }
+    var playerInitialized by remember { mutableStateOf(false) }
 
     // Hold-seek states
     val isHoldSeeking = remember { mutableStateOf(false) }
@@ -251,21 +254,28 @@ fun VideoPlayerScreenContent(
     )
 
         android.util.Log.i("VideoPlayer", "准备播放 URL: ${movieDetails.videoUri}, startPosition: ${startPositionMs}ms")
-    LaunchedEffect(exoPlayer, movieDetails, startPositionMs) {
-        val (mediaItem, langs) = movieDetails.intoMediaItemDynamicSubAsync(cacheDir = context.cacheDir)
+    LaunchedEffect(exoPlayer, movieDetails, startPositionMs, subtitleDelayMsState.value) {
+        val keepPositionMs = if (playerInitialized) exoPlayer.currentPosition else (startPositionMs ?: 0L)
+        val wasPlaying = if (playerInitialized) exoPlayer.isPlaying else true
+        val (mediaItem, langs) = movieDetails.intoMediaItemDynamicSubAsync(
+            cacheDir = context.cacheDir,
+            subtitleDelayUs = subtitleDelayMsState.value.toLong() * 1000L
+        )
         assrtLanguagesState.value = langs
         android.util.Log.d("VideoPlayer", "addMediaItem: uri=${mediaItem.localConfiguration?.uri} subCount=${mediaItem.localConfiguration?.subtitleConfigurations?.size}")
         mediaItem.localConfiguration?.subtitleConfigurations?.forEachIndexed { idx, sc ->
             android.util.Log.d("VideoPlayer", "subtitle[$idx]: uri=${sc.uri} mime=${sc.mimeType} lang=${sc.language} flags=${sc.selectionFlags}")
         }
-        exoPlayer.addMediaItem(mediaItem)
+        exoPlayer.setMediaItem(mediaItem)
         exoPlayer.prepare()
-        
-        // 如果有播放记录，设置播放位置
-        if (startPositionMs != null && startPositionMs > 0) {
-            exoPlayer.seekTo(startPositionMs)
-            android.util.Log.d("VideoPlayer", "Seeking to position: ${startPositionMs}ms")
-        }
+        try {
+            if (keepPositionMs > 0) {
+                exoPlayer.seekTo(keepPositionMs)
+                android.util.Log.d("VideoPlayer", "Seeking to position: ${keepPositionMs}ms (init=${!playerInitialized})")
+            }
+            exoPlayer.playWhenReady = wasPlaying
+        } catch (_: Throwable) {}
+        playerInitialized = true
     }
     
     // 监听播放状态，当开始播放时记录到最近观看
@@ -444,6 +454,11 @@ fun VideoPlayerScreenContent(
                     val params = exoPlayer.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !enable).build()
                     exoPlayer.trackSelectionParameters = params
                     showSubtitlePopoverState.value = false
+                },
+                subtitleDelayMs = subtitleDelayMsState.value,
+                onAdjustDelay = { delta ->
+                    val next = (subtitleDelayMsState.value + delta).coerceIn(-5000, 5000)
+                    subtitleDelayMsState.value = next
                 }
             )
         }
@@ -475,7 +490,7 @@ private fun Modifier.dPadEvents(
     }
 )
 
-private suspend fun MovieDetails.intoMediaItemDynamicSubAsync(cacheDir: File): Pair<MediaItem, List<String>> {
+private suspend fun MovieDetails.intoMediaItemDynamicSubAsync(cacheDir: File, subtitleDelayUs: Long? = null): Pair<MediaItem, List<String>> {
     val assrtToken = BuildConfig.ASSRT_TOKEN
     val builder = MediaItem.Builder().setUri(videoUri)
     val subs = mutableListOf<MediaItem.SubtitleConfiguration>()
@@ -494,19 +509,21 @@ private suspend fun MovieDetails.intoMediaItemDynamicSubAsync(cacheDir: File): P
                 if (pick != null) {
                     val mime = SubtitleMime.fromUrl(pick) ?: MimeTypes.TEXT_VTT
                     android.util.Log.d("VideoPlayer", "ASSRT pick url=$pick mime=$mime langs=${selected.languages}")
-                    // 下载并转成 UTF-8 缓存文件，避免中文乱码
+                    // 下载并转成 UTF-8 缓存文件，避免中文乱码，并按需时间偏移
                     val tmp = SubtitleFetcher.fetchToUtf8File(
                         url = pick,
                         client = OkHttpClient(),
-                        cacheDir = cacheDir
+                        cacheDir = cacheDir,
+                        timeShiftMs = ((subtitleDelayUs ?: 0L) / 1000L).toInt(),
+                        mime = mime
                     )
                     val uri = if (tmp != null) Uri.fromFile(tmp) else Uri.parse(pick)
-                    subs += MediaItem.SubtitleConfiguration
+                    val scBuilder = MediaItem.SubtitleConfiguration
                         .Builder(uri)
                         .setMimeType(mime)
                         .setLanguage("zh")
                         .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
-                        .build()
+                    subs += scBuilder.build()
                 }
             }
         }

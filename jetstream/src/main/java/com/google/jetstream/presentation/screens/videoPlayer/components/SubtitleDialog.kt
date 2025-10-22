@@ -2,6 +2,7 @@ package com.google.jetstream.presentation.screens.videoPlayer.components
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -15,7 +16,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -32,12 +35,14 @@ fun SubtitleDialog(
     onDismissRequest: () -> Unit,
     languages: List<String>,
     selectedIndex: Int, // 0 = Off, >0 correspond to languages index+1
-    onSelectIndex: (Int) -> Unit
+    onSelectIndex: (Int) -> Unit,
+    subtitleDelayMs: Int,
+    onAdjustDelay: (Int) -> Unit
 ) {
     StandardDialog(
         showDialog = show,
         onDismissRequest = onDismissRequest,
-        title = { Text(text = "Subtitles", style = MaterialTheme.typography.titleLarge) },
+        title = { Text(text = "字幕", style = MaterialTheme.typography.titleLarge) },
         containerColor = MaterialTheme.colorScheme.surface,
         titleContentColor = MaterialTheme.colorScheme.onSurface,
         textContentColor = MaterialTheme.colorScheme.onSurface,
@@ -46,7 +51,77 @@ fun SubtitleDialog(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                val items = listOf("Off") + languages
+                // One-line delay controls at the top: [ - ] [ current ] [ + ]
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    var focusMinus by remember { mutableStateOf(false) }
+                    var focusPlus by remember { mutableStateOf(false) }
+
+                    androidx.tv.material3.ListItem(
+                        selected = false,
+                        onClick = { onAdjustDelay(-250) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .onFocusChanged { focusMinus = it.isFocused },
+                        headlineContent = {
+                            Text(
+                                text = "−",
+                                color = if (focusMinus) Color.Black else MaterialTheme.colorScheme.onSurface,
+                                fontSize = 28.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        },
+                        colors = androidx.tv.material3.ListItemDefaults.colors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            focusedContainerColor = Color.White
+                        )
+                    )
+
+                    androidx.tv.material3.ListItem(
+                        selected = false,
+                        onClick = {},
+                        modifier = Modifier.weight(1f),
+                        headlineContent = {
+                            Text(
+                                text = "${subtitleDelayMs} ms",
+                                color = MaterialTheme.colorScheme.onSurface,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        },
+                        colors = androidx.tv.material3.ListItemDefaults.colors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    )
+
+                    androidx.tv.material3.ListItem(
+                        selected = false,
+                        onClick = { onAdjustDelay(250) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .onFocusChanged { focusPlus = it.isFocused },
+                        headlineContent = {
+                            Text(
+                                text = "+",
+                                color = if (focusPlus) Color.Black else MaterialTheme.colorScheme.onSurface,
+                                fontSize = 28.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        },
+                        colors = androidx.tv.material3.ListItemDefaults.colors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            focusedContainerColor = Color.White
+                        )
+                    )
+                }
+                val items = listOf("关闭字幕") + languages
                 items.forEachIndexed { idx, label ->
                     var isFocused by remember { mutableStateOf(false) }
                     
@@ -75,6 +150,8 @@ fun SubtitleDialog(
                         )
                     )
                 }
+
+                // end of timing controls
             }
         },
         confirmButton = { }

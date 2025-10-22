@@ -20,10 +20,6 @@ import android.util.Log
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Surface
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -31,55 +27,52 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.media3.common.text.Cue
-import androidx.media3.common.text.CueGroup
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.Player
+import androidx.media3.common.text.CueGroup
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.SubtitleView
 
 @Composable
 fun PlayerSubtitles(
     player: ExoPlayer,
     contentPadding: PaddingValues = PaddingValues(horizontal = 56.dp, vertical = 8.dp)
 ) {
-    var cues by remember { mutableStateOf<List<Cue>>(emptyList()) }
+    var subtitleView by remember { mutableStateOf<SubtitleView?>(null) }
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onCues(cueGroup: CueGroup) {
                 Log.d("PlayerSubtitles", "onCues size=${cueGroup.cues.size}")
-                cues = cueGroup.cues
+                // Forward cues directly to SubtitleView which aligns rendering to the player's time base
+                subtitleView?.setCues(cueGroup.cues)
             }
         }
         Log.d("PlayerSubtitles", "attach listener; currentCues=${try { player.currentCues.cues.size } catch (_: Throwable) { -1 }}")
         player.addListener(listener)
-        try { cues = player.currentCues.cues } catch (_: Throwable) {}
+        try { subtitleView?.setCues(player.currentCues.cues) } catch (_: Throwable) {}
         onDispose { player.removeListener(listener) }
     }
 
-    if (cues.isEmpty()) return
-
-    Surface(
+    AndroidView<SubtitleView>(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(contentPadding)
-            .alpha(0.92f),
-        shape = RoundedCornerShape(8.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.35f)
-    ) {
-        Text(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            text = cues.joinToString("\n") { it.text?.toString().orEmpty() }.trim(),
-            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-    }
+            .padding(contentPadding),
+        factory = { ctx ->
+            SubtitleView(ctx).apply {
+                // Basic styling aligned with previous UI intent (slightly translucent background-like effect is handled by the view)
+                setApplyEmbeddedStyles(true)
+                setApplyEmbeddedFontSizes(true)
+                // Slightly larger default size for TV readability
+                setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * 1.15f)
+                subtitleView = this
+            }
+        },
+        update = { _ ->
+            // No-op; cues are pushed via listener
+        }
+    )
 }
 
 
