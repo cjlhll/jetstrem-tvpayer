@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Done
@@ -66,6 +67,7 @@ fun SubtitleDialog(
                         onClick = { onAdjustDelay(-250) },
                         modifier = Modifier
                             .weight(1f)
+                            .height(56.dp)
                             .onFocusChanged { focusMinus = it.isFocused },
                         headlineContent = {
                             Text(
@@ -85,14 +87,25 @@ fun SubtitleDialog(
                     androidx.tv.material3.ListItem(
                         selected = false,
                         onClick = {},
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(56.dp),
                         headlineContent = {
-                            Text(
-                                text = "${subtitleDelayMs} ms",
-                                color = MaterialTheme.colorScheme.onSurface,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.fillMaxWidth()
-                            )
+                            androidx.compose.foundation.layout.Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(56.dp),
+                                contentAlignment = androidx.compose.ui.Alignment.Center
+                            ) {
+                                Text(
+                                    text = "${subtitleDelayMs} ms",
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    textAlign = TextAlign.Center,
+                                    fontSize = 22.sp,
+                                    lineHeight = 22.sp,
+                                    maxLines = 1
+                                )
+                            }
                         },
                         colors = androidx.tv.material3.ListItemDefaults.colors(
                             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
@@ -105,6 +118,7 @@ fun SubtitleDialog(
                         onClick = { onAdjustDelay(250) },
                         modifier = Modifier
                             .weight(1f)
+                            .height(56.dp)
                             .onFocusChanged { focusPlus = it.isFocused },
                         headlineContent = {
                             Text(

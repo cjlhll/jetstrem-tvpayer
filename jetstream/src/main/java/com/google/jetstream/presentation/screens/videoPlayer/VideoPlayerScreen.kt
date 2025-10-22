@@ -166,6 +166,8 @@ fun VideoPlayerScreenContent(
     // Subtitle popover & language labels state
     val showSubtitlePopoverState = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     val assrtLanguagesState = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<List<String>>(emptyList()) }
+    // 用户选择的外部字幕标签（例如：简体中文/繁体中文/英语/双语）；null 表示关闭外部字幕
+    val selectedSubtitleLabelState = remember { mutableStateOf<String?>(null) }
     // External subtitle delay in milliseconds (negative = show earlier, positive = show later)
     val subtitleDelayMsState = remember { mutableStateOf(0) }
     var playerInitialized by remember { mutableStateOf(false) }
@@ -257,11 +259,16 @@ fun VideoPlayerScreenContent(
     LaunchedEffect(exoPlayer, movieDetails, startPositionMs, subtitleDelayMsState.value) {
         val keepPositionMs = if (playerInitialized) exoPlayer.currentPosition else (startPositionMs ?: 0L)
         val wasPlaying = if (playerInitialized) exoPlayer.isPlaying else true
-        val (mediaItem, langs) = movieDetails.intoMediaItemDynamicSubAsync(
+        val (mediaItem, langs, defaultLabel) = movieDetails.intoMediaItemDynamicSubAsync(
             cacheDir = context.cacheDir,
-            subtitleDelayUs = subtitleDelayMsState.value.toLong() * 1000L
+            subtitleDelayUs = subtitleDelayMsState.value.toLong() * 1000L,
+            preferredLabel = selectedSubtitleLabelState.value
         )
         assrtLanguagesState.value = langs
+        if (selectedSubtitleLabelState.value == null && defaultLabel != null) {
+            // 初始化时记录默认选择，便于弹窗高亮
+            selectedSubtitleLabelState.value = defaultLabel
+        }
         android.util.Log.d("VideoPlayer", "addMediaItem: uri=${mediaItem.localConfiguration?.uri} subCount=${mediaItem.localConfiguration?.subtitleConfigurations?.size}")
         mediaItem.localConfiguration?.subtitleConfigurations?.forEachIndexed { idx, sc ->
             android.util.Log.d("VideoPlayer", "subtitle[$idx]: uri=${sc.uri} mime=${sc.mimeType} lang=${sc.language} flags=${sc.selectionFlags}")
@@ -448,11 +455,31 @@ fun VideoPlayerScreenContent(
                 show = true,
                 onDismissRequest = { showSubtitlePopoverState.value = false },
                 languages = assrtLanguagesState.value,
-                selectedIndex = if (enabled) 1 else 0,
+                selectedIndex = run {
+                    val current = selectedSubtitleLabelState.value
+                    val idx = assrtLanguagesState.value.indexOf(current)
+                    if (!enabled) 0 else if (idx >= 0) idx + 1 else 0
+                },
                 onSelectIndex = { idx ->
-                    val enable = idx != 0
-                    val params = exoPlayer.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !enable).build()
-                    exoPlayer.trackSelectionParameters = params
+                    if (idx == 0) {
+                        val params = exoPlayer.trackSelectionParameters
+                            .buildUpon()
+                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                            .setPreferredTextLanguage(null)
+                            .build()
+                        exoPlayer.trackSelectionParameters = params
+                        selectedSubtitleLabelState.value = null
+                    } else {
+                        val label = assrtLanguagesState.value.getOrNull(idx - 1)
+                        val lang = labelToLanguageTag(label)
+                        val params = exoPlayer.trackSelectionParameters
+                            .buildUpon()
+                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                            .setPreferredTextLanguage(lang)
+                            .build()
+                        exoPlayer.trackSelectionParameters = params
+                        selectedSubtitleLabelState.value = label
+                    }
                     showSubtitlePopoverState.value = false
                 },
                 subtitleDelayMs = subtitleDelayMsState.value,
@@ -490,39 +517,71 @@ private fun Modifier.dPadEvents(
     }
 )
 
-private suspend fun MovieDetails.intoMediaItemDynamicSubAsync(cacheDir: File, subtitleDelayUs: Long? = null): Pair<MediaItem, List<String>> {
+private fun labelToLanguageTag(label: String?): String? = when (label) {
+    "简体中文", "双语" -> "zh"
+    "繁体中文" -> "zh-Hant"
+    "英语" -> "en"
+    else -> null
+}
+
+private suspend fun MovieDetails.intoMediaItemDynamicSubAsync(cacheDir: File, subtitleDelayUs: Long? = null, preferredLabel: String? = null): Triple<MediaItem, List<String>, String?> {
     val assrtToken = BuildConfig.ASSRT_TOKEN
     val builder = MediaItem.Builder().setUri(videoUri)
     val subs = mutableListOf<MediaItem.SubtitleConfiguration>()
     var selectedLangs: List<String> = emptyList()
+    var defaultPickedLabel: String? = null
     try {
         if (!assrtToken.isNullOrBlank()) {
             val api = AssrtApi(assrtToken)
             val keyword = name.ifBlank { director.ifBlank { releaseDate } }
             val selected = api.searchBest(keyword)
-            android.util.Log.d("VideoPlayer", "ASSRT search keyword=$keyword id=${selected?.id} langs=${selected?.languages}")
-            selectedLangs = selected?.languages ?: emptyList()
+            android.util.Log.d("VideoPlayer", "ASSRT search keyword=$keyword id=${selected?.id}")
             if (selected?.id != null) {
-                val urls = api.detail(selected.id)
-                android.util.Log.d("VideoPlayer", "ASSRT detail urls=${urls.size}")
-                val pick = urls.firstOrNull { SubtitleMime.fromUrl(it) != null }
-                if (pick != null) {
-                    val mime = SubtitleMime.fromUrl(pick) ?: MimeTypes.TEXT_VTT
-                    android.util.Log.d("VideoPlayer", "ASSRT pick url=$pick mime=$mime langs=${selected.languages}")
-                    // 下载并转成 UTF-8 缓存文件，避免中文乱码，并按需时间偏移
+                val detail = api.detail(selected.id)
+                selectedLangs = detail.labels
+                android.util.Log.d("VideoPlayer", "ASSRT detail urls=${detail.urls.size} labels=${detail.labels}")
+
+                // 识别各URL对应的标签
+                fun labelOfUrl(url: String): String? {
+                    val p = url.substringBefore('?').lowercase()
+                    return when {
+                        p.contains("chs&eng") || (p.contains("chs") && p.contains("eng")) || p.contains("双语") -> "双语"
+                        (p.contains(".chs.") || p.endsWith(".chs.srt") || p.contains("chs")) && !p.contains("cht") -> "简体中文"
+                        p.contains("cht") -> "繁体中文"
+                        p.contains("eng") -> "英语"
+                        else -> null
+                    }
+                }
+
+                val allowed = detail.urls.filter { SubtitleMime.fromUrl(it) != null }
+                val labelToUrl = linkedMapOf<String, String>()
+                for (u in allowed) {
+                    val lbl = labelOfUrl(u) ?: continue
+                    if (!labelToUrl.containsKey(lbl)) labelToUrl[lbl] = u
+                }
+
+                // 确定默认选择
+                val priority = listOf("双语", "简体中文", "繁体中文", "英语")
+                val defaultLabel = preferredLabel ?: priority.firstOrNull { labelToUrl.containsKey(it) }
+                defaultPickedLabel = defaultLabel
+
+                // 预下载并挂载所有可用字幕文件，默认项打上 DEFAULT
+                for ((lbl, u) in labelToUrl) {
+                    val mime = SubtitleMime.fromUrl(u) ?: MimeTypes.TEXT_VTT
                     val tmp = SubtitleFetcher.fetchToUtf8File(
-                        url = pick,
+                        url = u,
                         client = OkHttpClient(),
                         cacheDir = cacheDir,
                         timeShiftMs = ((subtitleDelayUs ?: 0L) / 1000L).toInt(),
                         mime = mime
                     )
-                    val uri = if (tmp != null) Uri.fromFile(tmp) else Uri.parse(pick)
+                    val uri = if (tmp != null) Uri.fromFile(tmp) else Uri.parse(u)
                     val scBuilder = MediaItem.SubtitleConfiguration
                         .Builder(uri)
                         .setMimeType(mime)
-                        .setLanguage("zh")
-                        .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                        .setLanguage(labelToLanguageTag(lbl))
+                        .setLabel(lbl)
+                    if (lbl == defaultLabel) scBuilder.setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
                     subs += scBuilder.build()
                 }
             }
@@ -530,7 +589,7 @@ private suspend fun MovieDetails.intoMediaItemDynamicSubAsync(cacheDir: File, su
     } catch (t: Throwable) {
         android.util.Log.w("VideoPlayer", "ASSRT failed: ${t.message}")
     }
-    return Pair(builder.setSubtitleConfigurations(subs).build(), selectedLangs)
+    return Triple(builder.setSubtitleConfigurations(subs).build(), selectedLangs, defaultPickedLabel)
 }
 
 private fun Movie.intoMediaItem(): MediaItem {
@@ -538,3 +597,4 @@ private fun Movie.intoMediaItem(): MediaItem {
         .setUri(videoUri)
         .build()
 }
+
