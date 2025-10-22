@@ -171,3 +171,58 @@ fun SubtitleDialog(
         confirmButton = { }
     )
 }
+
+@OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
+@Composable
+fun AudioDialog(
+    show: Boolean,
+    onDismissRequest: () -> Unit,
+    options: List<String>,
+    selectedIndex: Int,
+    onSelectIndex: (Int) -> Unit,
+) {
+    StandardDialog(
+        showDialog = show,
+        onDismissRequest = onDismissRequest,
+        title = { Text(text = "音轨", style = MaterialTheme.typography.titleLarge) },
+        containerColor = MaterialTheme.colorScheme.surface,
+        titleContentColor = MaterialTheme.colorScheme.onSurface,
+        textContentColor = MaterialTheme.colorScheme.onSurface,
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                options.forEachIndexed { idx, label ->
+                    var isFocused by remember { mutableStateOf(false) }
+
+                    ListItem(
+                        selected = idx == selectedIndex,
+                        onClick = { onSelectIndex(idx) },
+                        modifier = Modifier.onFocusChanged { isFocused = it.isFocused },
+                        headlineContent = {
+                            Text(
+                                text = label,
+                                color = if (isFocused) Color.Black else MaterialTheme.colorScheme.onSurface
+                            )
+                        },
+                        trailingContent = {
+                            if (idx == selectedIndex) {
+                                Icon(
+                                    imageVector = Icons.Default.Done,
+                                    contentDescription = null,
+                                    tint = if (isFocused) Color.Black else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        },
+                        colors = ListItemDefaults.colors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            focusedContainerColor = Color.White
+                        )
+                    )
+                }
+            }
+        },
+        confirmButton = { }
+    )
+}

@@ -21,7 +21,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ClosedCaption
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,6 +44,7 @@ fun VideoPlayerControls(
     focusRequester: FocusRequester,
     onShowControls: () -> Unit = {},
     onClickSubtitles: () -> Unit = {},
+    onClickAudio: () -> Unit = {},
 ) {
     val isPlaying = player.isPlaying
 
@@ -77,11 +78,12 @@ fun VideoPlayerControls(
                     onClick = onClickSubtitles
                 )
                 VideoPlayerControlsIcon(
-                    icon = Icons.Default.Settings,
+                    icon = Icons.Default.Audiotrack,
                     isPlaying = isPlaying,
                     contentDescription =
                     StringConstants.Composable.VideoPlayerControlSettingsButton,
-                    onShowControls = onShowControls
+                    onShowControls = onShowControls,
+                    onClick = onClickAudio
                 )
             }
         },

@@ -62,6 +62,7 @@ import com.google.jetstream.presentation.screens.videoPlayer.components.VideoPla
 import com.google.jetstream.presentation.screens.videoPlayer.components.rememberPlayer
 import com.google.jetstream.presentation.screens.videoPlayer.components.PlayerSubtitles
 import com.google.jetstream.presentation.screens.videoPlayer.components.SubtitleDialog
+import com.google.jetstream.presentation.screens.videoPlayer.components.AudioDialog
 import com.google.jetstream.presentation.screens.videoPlayer.components.HoldSeekProgressBar
 import com.google.jetstream.presentation.screens.videoPlayer.components.rememberVideoPlayerPulseState
 import com.google.jetstream.presentation.screens.videoPlayer.components.rememberVideoPlayerState
@@ -166,6 +167,7 @@ fun VideoPlayerScreenContent(
     // Subtitle popover & language labels state
     val showSubtitlePopoverState = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     val assrtLanguagesState = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<List<String>>(emptyList()) }
+    val showAudioPopoverState = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     // 用户选择的外部字幕标签（例如：简体中文/繁体中文/英语/双语）；null 表示关闭外部字幕
     val selectedSubtitleLabelState = remember { mutableStateOf<String?>(null) }
     // External subtitle delay in milliseconds (negative = show earlier, positive = show later)
@@ -432,8 +434,35 @@ fun VideoPlayerScreenContent(
                     movieDetails = movieDetails,
                     focusRequester = focusRequester,
                     onShowControls = { videoPlayerState.showControls(exoPlayer.isPlaying) },
-                    onClickSubtitles = { showSubtitlePopoverState.value = true }
+                    onClickSubtitles = { showSubtitlePopoverState.value = true },
+                    onClickAudio = { showAudioPopoverState.value = true }
                 )
+        if (showAudioPopoverState.value) {
+            val audioGroups = exoPlayer.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+            val formats = audioGroups.flatMap { g -> (0 until g.mediaTrackGroup.length).map { i -> g.mediaTrackGroup.getFormat(i) } }
+            val labels = formats.mapIndexed { i, f ->
+                val lang = f.language ?: "und"
+                val ch = if (f.channelCount > 0) "${f.channelCount}ch" else null
+                listOfNotNull(lang, ch).joinToString(" · ").ifBlank { "Audio ${i+1}" }
+            }
+            AudioDialog(
+                show = true,
+                onDismissRequest = { showAudioPopoverState.value = false },
+                options = listOf("关闭音轨") + labels,
+                selectedIndex = 1,
+                onSelectIndex = { idx ->
+                    if (idx <= 0) { showAudioPopoverState.value = false; return@AudioDialog }
+                    val fmt = formats.getOrNull(idx - 1) ?: return@AudioDialog
+                    val lang = fmt.language
+                    val params = exoPlayer.trackSelectionParameters.buildUpon()
+                        .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                        .setPreferredAudioLanguage(lang)
+                        .build()
+                    exoPlayer.trackSelectionParameters = params
+                    showAudioPopoverState.value = false
+                }
+            )
+        }
             }
         )
 
