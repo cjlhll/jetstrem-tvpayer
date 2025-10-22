@@ -130,27 +130,19 @@ private fun Catalog(
     val homeViewModel: HomeScreeViewModel = hiltViewModel()
     val lastFocusedSection by homeViewModel.lastFocusedSection.collectAsStateWithLifecycle()
     
-    // 焦点管理 - 简化版本，依赖 focusRestorer() 自动恢复内部焦点
+    // 为每个区域创建 FocusRequester
     val recentlyWatchedFocusRequester = remember { FocusRequester() }
     val moviesFocusRequester = remember { FocusRequester() }
     val showsFocusRequester = remember { FocusRequester() }
     
-    // 焦点恢复逻辑
+    // 焦点恢复逻辑 - 使用最小延迟确保组件已绑定
     LaunchedEffect(focusRestoreTrigger, recentlyWatchedMovies, scraped, scrapedTv) {
+        // 等待一帧确保 FocusRequester 已绑定到组件
+        // 使用 50ms 作为平衡：足够让组件准备好，又不会让用户感觉到延迟
+        kotlinx.coroutines.delay(50)
+        
         if (focusRestoreTrigger > 0) {
-            // 从其他页面返回时，等待滚动状态完全稳定
-            // 给 LazyListState 时间通过 Saver 恢复位置
-            kotlinx.coroutines.delay(100)
-            
-            // 等待滚动状态稳定
-            while (lazyListState.isScrollInProgress) {
-                kotlinx.coroutines.delay(50)
-            }
-            
-            // 额外延迟确保渲染完成
-            kotlinx.coroutines.delay(200)
-            
-            // 恢复焦点到上次的区域
+            // 从其他页面返回时：恢复焦点到上次的区域
             val focusRestored = when (lastFocusedSection) {
                 1 -> if (recentlyWatchedMovies.isNotEmpty()) {
                     recentlyWatchedFocusRequester.requestFocus()
@@ -185,8 +177,7 @@ private fun Catalog(
                 }
             }
         } else {
-            // 首次加载时设置初始焦点
-            kotlinx.coroutines.delay(200)
+            // 首次加载时：等待数据加载和渲染完成
             when {
                 recentlyWatchedMovies.isNotEmpty() -> {
                     recentlyWatchedFocusRequester.requestFocus()

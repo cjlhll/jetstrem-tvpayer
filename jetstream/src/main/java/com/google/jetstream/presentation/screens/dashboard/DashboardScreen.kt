@@ -120,7 +120,7 @@ fun DashboardScreen(
     // TopBar "我的"图标的 FocusRequester
     val profileFocusRequester = TopBarFocusRequesters[0]
 
-    var isTopBarVisible by remember { mutableStateOf(true) }
+    var isTopBarVisible by rememberSaveable { mutableStateOf(true) }
     var isTopBarFocused by remember { mutableStateOf(false) }
     
     // 当抽屉状态改变时，管理焦点
@@ -216,9 +216,10 @@ fun DashboardScreen(
         var topBarHeightPx: Int by rememberSaveable { mutableIntStateOf(0) }
 
         // Used to show/hide DashboardTopBar
+        // 当从其他页面返回时，禁用动画以避免页面"滚动"
         val topBarYOffsetPx by animateIntAsState(
             targetValue = if (isTopBarVisible) 0 else -topBarHeightPx,
-            animationSpec = tween(),
+            animationSpec = if (isComingBackFromDifferentScreen) androidx.compose.animation.core.snap() else tween(),
             label = "",
             finishedListener = {
                 if (it == -topBarHeightPx && isComingBackFromDifferentScreen) {
@@ -229,9 +230,10 @@ fun DashboardScreen(
         )
 
         // Used to push down/pull up NavHost when DashboardTopBar is shown/hidden
+        // 当从其他页面返回时，禁用动画以避免页面"滚动"
         val navHostTopPaddingDp by animateDpAsState(
             targetValue = if (isTopBarVisible) with(density) { topBarHeightPx.toDp() } else 0.dp,
-            animationSpec = tween(),
+            animationSpec = if (isComingBackFromDifferentScreen) androidx.compose.animation.core.snap() else tween(),
             label = "",
         )
 
