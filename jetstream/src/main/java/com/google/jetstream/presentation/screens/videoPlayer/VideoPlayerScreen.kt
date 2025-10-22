@@ -259,35 +259,159 @@ fun VideoPlayerScreenContent(
         hideSeconds = 4,
     )
 
-        android.util.Log.i("VideoPlayer", "准备播放 URL: ${movieDetails.videoUri}, startPosition: ${startPositionMs}ms")
-    LaunchedEffect(exoPlayer, movieDetails, startPositionMs, subtitleDelayMsState.value) {
-        val keepPositionMs = if (playerInitialized) exoPlayer.currentPosition else (startPositionMs ?: 0L)
-        val wasPlaying = if (playerInitialized) exoPlayer.isPlaying else true
+    android.util.Log.i("VideoPlayer", "准备播放 URL: ${movieDetails.videoUri}, startPosition: ${startPositionMs}ms")
+    
+    // 先启动视频播放，不等待字幕
+    LaunchedEffect(exoPlayer, movieDetails, startPositionMs) {
+        if (!playerInitialized) {
+            val keepPositionMs = startPositionMs ?: 0L
+            // 创建不带字幕的MediaItem，立即播放
+            val mediaItem = MediaItem.Builder().setUri(movieDetails.videoUri).build()
+            exoPlayer.setMediaItem(mediaItem)
+            exoPlayer.prepare()
+            try {
+                if (keepPositionMs > 0) {
+                    exoPlayer.seekTo(keepPositionMs)
+                    android.util.Log.d("VideoPlayer", "Seeking to position: ${keepPositionMs}ms (video only)")
+                }
+                exoPlayer.playWhenReady = true
+            } catch (_: Throwable) {}
+            playerInitialized = true
+            android.util.Log.d("VideoPlayer", "Video started, subtitles loading in background...")
+        }
+    }
+    
+    // 记录上次应用的延迟，避免重复触发
+    var lastAppliedDelayMs by remember { mutableStateOf(0) }
+    
+    // 在后台异步加载字幕，不阻塞视频播放
+    // 只在切换字幕语言时重新加载，延迟调整由单独逻辑处理
+    LaunchedEffect(exoPlayer, movieDetails, selectedSubtitleLabelState.value) {
+        if (!playerInitialized) return@LaunchedEffect
+        
+        android.util.Log.d("VideoPlayer", "Loading subtitles in background...")
         val (mediaItem, langs, defaultLabel) = movieDetails.intoMediaItemDynamicSubAsync(
             cacheDir = context.cacheDir,
-            subtitleDelayUs = subtitleDelayMsState.value.toLong() * 1000L,
+            subtitleDelayUs = lastAppliedDelayMs.toLong() * 1000L,  // 使用最后应用的延迟
             preferredLabel = selectedSubtitleLabelState.value,
             headers = headers
         )
+        
         assrtLanguagesState.value = langs
         if (selectedSubtitleLabelState.value == null && defaultLabel != null) {
             // 初始化时记录默认选择，便于弹窗高亮
             selectedSubtitleLabelState.value = defaultLabel
         }
-        android.util.Log.d("VideoPlayer", "addMediaItem: uri=${mediaItem.localConfiguration?.uri} subCount=${mediaItem.localConfiguration?.subtitleConfigurations?.size}")
+        
+        android.util.Log.d("VideoPlayer", "Subtitles loaded, mounting: uri=${mediaItem.localConfiguration?.uri} subCount=${mediaItem.localConfiguration?.subtitleConfigurations?.size}")
         mediaItem.localConfiguration?.subtitleConfigurations?.forEachIndexed { idx, sc ->
             android.util.Log.d("VideoPlayer", "subtitle[$idx]: uri=${sc.uri} mime=${sc.mimeType} lang=${sc.language} flags=${sc.selectionFlags}")
         }
-        exoPlayer.setMediaItem(mediaItem)
-        exoPlayer.prepare()
+        
+        // 无感挂载字幕：使用 replaceMediaItem 替代 setMediaItem，避免重新缓冲
+        val keepPositionMs = exoPlayer.currentPosition
+        val wasPlaying = exoPlayer.playWhenReady
+        
         try {
-            if (keepPositionMs > 0) {
-                exoPlayer.seekTo(keepPositionMs)
-                android.util.Log.d("VideoPlayer", "Seeking to position: ${keepPositionMs}ms (init=${!playerInitialized})")
+            // replaceMediaItem 会保持播放状态，不会重新缓冲
+            exoPlayer.replaceMediaItem(0, mediaItem)
+            
+            // 等待播放器更新轨道信息
+            kotlinx.coroutines.delay(150)
+            
+            // 重新应用用户选择的字幕（非常重要！）
+            if (selectedSubtitleLabelState.value != null) {
+                val lang = labelToLanguageTag(selectedSubtitleLabelState.value)
+                val params = exoPlayer.trackSelectionParameters
+                    .buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                    .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                    .setPreferredTextLanguage(lang)
+                    .build()
+                exoPlayer.trackSelectionParameters = params
+                android.util.Log.d("VideoPlayer", "Applied subtitle selection: ${selectedSubtitleLabelState.value} (lang=$lang)")
             }
+            
+            // 如果位置有偏差，微调回正确位置
+            val currentPos = exoPlayer.currentPosition
+            if (kotlin.math.abs(currentPos - keepPositionMs) > 1000) {
+                exoPlayer.seekTo(keepPositionMs)
+                android.util.Log.d("VideoPlayer", "Position adjusted: ${keepPositionMs}ms")
+            }
+            
+            // 确保播放状态不变
+            if (wasPlaying && !exoPlayer.isPlaying) {
+                exoPlayer.play()
+            }
+            
+            android.util.Log.d("VideoPlayer", "Subtitles mounted seamlessly (no interruption)")
+        } catch (t: Throwable) {
+            android.util.Log.w("VideoPlayer", "Failed to mount subtitles seamlessly: ${t.message}")
+            // 回退到旧方法
+            exoPlayer.setMediaItem(mediaItem)
+            exoPlayer.prepare()
+            exoPlayer.seekTo(keepPositionMs)
             exoPlayer.playWhenReady = wasPlaying
-        } catch (_: Throwable) {}
-        playerInitialized = true
+        }
+    }
+    
+    // 单独处理字幕延迟调整，使用防抖动避免频繁触发
+    LaunchedEffect(subtitleDelayMsState.value) {
+        if (!playerInitialized) return@LaunchedEffect
+        val newDelay = subtitleDelayMsState.value
+        
+        // 如果延迟没变化，跳过
+        if (newDelay == lastAppliedDelayMs) return@LaunchedEffect
+        
+        // 防抖动：等待用户停止调整
+        kotlinx.coroutines.delay(500)
+        
+        // 再次检查延迟是否又被改变了（用户可能还在调整）
+        if (newDelay != subtitleDelayMsState.value) return@LaunchedEffect
+        
+        android.util.Log.d("VideoPlayer", "Applying subtitle delay: ${newDelay}ms")
+        
+        // 重新生成带延迟的字幕
+        val (mediaItem, _, _) = movieDetails.intoMediaItemDynamicSubAsync(
+            cacheDir = context.cacheDir,
+            subtitleDelayUs = newDelay.toLong() * 1000L,
+            preferredLabel = selectedSubtitleLabelState.value,
+            headers = headers
+        )
+        
+        val keepPositionMs = exoPlayer.currentPosition
+        val wasPlaying = exoPlayer.playWhenReady
+        
+        try {
+            exoPlayer.replaceMediaItem(0, mediaItem)
+            kotlinx.coroutines.delay(150)
+            
+            // 重新应用字幕选择
+            if (selectedSubtitleLabelState.value != null) {
+                val lang = labelToLanguageTag(selectedSubtitleLabelState.value)
+                val params = exoPlayer.trackSelectionParameters
+                    .buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                    .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                    .setPreferredTextLanguage(lang)
+                    .build()
+                exoPlayer.trackSelectionParameters = params
+            }
+            
+            // 恢复播放位置和状态
+            val currentPos = exoPlayer.currentPosition
+            if (kotlin.math.abs(currentPos - keepPositionMs) > 1000) {
+                exoPlayer.seekTo(keepPositionMs)
+            }
+            if (wasPlaying && !exoPlayer.isPlaying) {
+                exoPlayer.play()
+            }
+            
+            lastAppliedDelayMs = newDelay
+            android.util.Log.d("VideoPlayer", "Subtitle delay applied: ${newDelay}ms")
+        } catch (t: Throwable) {
+            android.util.Log.w("VideoPlayer", "Failed to apply subtitle delay: ${t.message}")
+        }
     }
     
     // 监听播放状态，当开始播放时记录到最近观看
@@ -597,21 +721,32 @@ fun VideoPlayerScreenContent(
             val internalLabels = internalEntries.map { it.label }
             val externalLabels = assrtLanguagesState.value
             val combined = externalLabels + internalLabels
-            val enabled = textGroups.any { it.isSelected }
             SubtitleDialog(
                 show = true,
                 onDismissRequest = { showSubtitlePopoverState.value = false },
                 languages = combined,
                 selectedIndex = run {
                     val current = selectedSubtitleLabelState.value
-                    val extIdx = externalLabels.indexOf(current)
-                    val intPref = internalLabels.indexOfFirst { it.contains("简体中文") }
-                    when {
-                        !enabled -> 0
-                        extIdx >= 0 -> extIdx + 1
-                        intPref >= 0 -> externalLabels.size + intPref + 1
-                        internalLabels.isNotEmpty() -> externalLabels.size + 1
-                        else -> 0
+                    // 如果用户明确选择了关闭字幕
+                    if (current == null) {
+                        0
+                    } else {
+                        // 优先在外部字幕中查找
+                        val extIdx = externalLabels.indexOf(current)
+                        if (extIdx >= 0) {
+                            extIdx + 1  // +1 是因为索引0是"关闭字幕"
+                        } else {
+                            // 在内嵌字幕中查找（带"（内嵌）"后缀）
+                            val intIdx = internalLabels.indexOfFirst { 
+                                it.contains(current) || current.contains(it.replace("（内嵌）", "").trim())
+                            }
+                            if (intIdx >= 0) {
+                                externalLabels.size + intIdx + 1
+                            } else {
+                                // 没找到，默认选择第一个可用字幕
+                                if (externalLabels.isNotEmpty()) 1 else if (internalLabels.isNotEmpty()) externalLabels.size + 1 else 0
+                            }
+                        }
                     }
                 },
                 onSelectIndex = { idx ->
@@ -743,12 +878,13 @@ private suspend fun MovieDetails.intoMediaItemDynamicSubAsync(cacheDir: File, su
                 val defaultLabel = preferredLabel ?: priority.firstOrNull { labelToUrl.containsKey(it) }
                 defaultPickedLabel = defaultLabel
 
-                // 预下载并挂载所有可用字幕文件，默认项打上 DEFAULT
+                // 下载所有字幕文件（字符集检测已优化）
+                val client = OkHttpClient()
                 for ((lbl, u) in labelToUrl) {
                     val mime = SubtitleMime.fromUrl(u) ?: MimeTypes.TEXT_VTT
                     val tmp = SubtitleFetcher.fetchToUtf8File(
                         url = u,
-                        client = OkHttpClient(),
+                        client = client,
                         cacheDir = cacheDir,
                         timeShiftMs = ((subtitleDelayUs ?: 0L) / 1000L).toInt(),
                         mime = mime
@@ -799,6 +935,7 @@ private suspend fun MovieDetails.intoMediaItemDynamicSubAsync(cacheDir: File, su
             }
             val client = OkHttpClient.Builder().addInterceptor(headerInterceptor).build()
 
+            // 探测和下载 WebDAV 字幕文件（字符集检测已优化）
             val picked = mutableMapOf<String, String>()
             for (u in candidates) {
                 val mime = SubtitleMime.fromUrl(u) ?: continue
@@ -850,4 +987,5 @@ private fun Movie.intoMediaItem(): MediaItem {
         .setUri(videoUri)
         .build()
 }
+
 
