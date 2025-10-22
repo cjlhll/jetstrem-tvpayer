@@ -53,7 +53,6 @@ fun VideoPlayerOverlay(
     focusRequester: FocusRequester = remember { FocusRequester() },
     showControls: () -> Unit = {},
     centerButton: @Composable () -> Unit = {},
-    subtitles: @Composable () -> Unit = {},
     controls: @Composable () -> Unit = {}
 ) {
     LaunchedEffect(isControlsVisible) {
@@ -86,23 +85,13 @@ fun VideoPlayerOverlay(
                 Column(
                     modifier = Modifier
                         .padding(horizontal = 56.dp)
-                        // 将工具栏整体上移，保证其在字幕之上，且不影响字幕位置
-                        .padding(bottom = 120.dp, top = 8.dp)
+                        .padding(bottom = 36.dp, top = 8.dp)
                 ) {
                     controls()
                 }
             }
         }
 
-        // 固定将字幕放置在屏幕底部，避免居中显示
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                // 固定字幕的底部偏移，避免被工具栏“推上去”
-                .padding(bottom = 48.dp)
-        ) {
-            subtitles()
-        }
         centerButton()
     }
 }
@@ -129,14 +118,6 @@ private fun VideoPlayerOverlayPreview() {
             VideoPlayerOverlay(
                 modifier = Modifier.align(Alignment.BottomCenter),
                 isPlaying = true,
-                subtitles = {
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .height(100.dp)
-                            .background(Color.Red)
-                    )
-                },
                 controls = {
                     Box(
                         Modifier

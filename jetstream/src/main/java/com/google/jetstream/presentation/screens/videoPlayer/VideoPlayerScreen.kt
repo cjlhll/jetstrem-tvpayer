@@ -61,20 +61,10 @@ import com.google.jetstream.presentation.screens.videoPlayer.components.VideoPla
 import com.google.jetstream.presentation.screens.videoPlayer.components.VideoPlayerPulseState
 import com.google.jetstream.presentation.screens.videoPlayer.components.VideoPlayerState
 import com.google.jetstream.presentation.screens.videoPlayer.components.rememberPlayer
-import com.google.jetstream.presentation.screens.videoPlayer.components.PlayerSubtitles
-import com.google.jetstream.presentation.screens.videoPlayer.components.SubtitleDialog
-import com.google.jetstream.presentation.screens.videoPlayer.components.AudioDialog
 import com.google.jetstream.presentation.screens.videoPlayer.components.HoldSeekProgressBar
 import com.google.jetstream.presentation.screens.videoPlayer.components.rememberVideoPlayerPulseState
 import com.google.jetstream.presentation.screens.videoPlayer.components.rememberVideoPlayerState
 import com.google.jetstream.presentation.utils.handleDPadKeyEvents
-import com.google.jetstream.BuildConfig
-import com.google.jetstream.data.subs.AssrtApi
-import com.google.jetstream.data.subs.SubtitleMime
-import com.google.jetstream.data.subs.SubtitleFetcher
-import okhttp3.OkHttpClient
-import okhttp3.Interceptor
-import java.io.File
 import android.view.KeyEvent
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -166,14 +156,6 @@ fun VideoPlayerScreenContent(
 
     val exoPlayer = rememberPlayer(context, headers)
 
-    // Subtitle popover & language labels state
-    val showSubtitlePopoverState = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
-    val assrtLanguagesState = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<List<String>>(emptyList()) }
-    val showAudioPopoverState = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
-    // 用户选择的外部字幕标签（例如：简体中文/繁体中文/英语/双语）；null 表示关闭外部字幕
-    val selectedSubtitleLabelState = remember { mutableStateOf<String?>(null) }
-    // External subtitle delay in milliseconds (negative = show earlier, positive = show later)
-    val subtitleDelayMsState = remember { mutableStateOf(0) }
     var playerInitialized by remember { mutableStateOf(false) }
 
     // Hold-seek states
@@ -261,156 +243,21 @@ fun VideoPlayerScreenContent(
 
     android.util.Log.i("VideoPlayer", "准备播放 URL: ${movieDetails.videoUri}, startPosition: ${startPositionMs}ms")
     
-    // 先启动视频播放，不等待字幕
     LaunchedEffect(exoPlayer, movieDetails, startPositionMs) {
         if (!playerInitialized) {
             val keepPositionMs = startPositionMs ?: 0L
-            // 创建不带字幕的MediaItem，立即播放
             val mediaItem = MediaItem.Builder().setUri(movieDetails.videoUri).build()
             exoPlayer.setMediaItem(mediaItem)
             exoPlayer.prepare()
             try {
                 if (keepPositionMs > 0) {
                     exoPlayer.seekTo(keepPositionMs)
-                    android.util.Log.d("VideoPlayer", "Seeking to position: ${keepPositionMs}ms (video only)")
+                    android.util.Log.d("VideoPlayer", "Seeking to position: ${keepPositionMs}ms")
                 }
                 exoPlayer.playWhenReady = true
             } catch (_: Throwable) {}
             playerInitialized = true
-            android.util.Log.d("VideoPlayer", "Video started, subtitles loading in background...")
-        }
-    }
-    
-    // 记录上次应用的延迟，避免重复触发
-    var lastAppliedDelayMs by remember { mutableStateOf(0) }
-    
-    // 在后台异步加载字幕，不阻塞视频播放
-    // 只在切换字幕语言时重新加载，延迟调整由单独逻辑处理
-    LaunchedEffect(exoPlayer, movieDetails, selectedSubtitleLabelState.value) {
-        if (!playerInitialized) return@LaunchedEffect
-        
-        android.util.Log.d("VideoPlayer", "Loading subtitles in background...")
-        val (mediaItem, langs, defaultLabel) = movieDetails.intoMediaItemDynamicSubAsync(
-            cacheDir = context.cacheDir,
-            subtitleDelayUs = lastAppliedDelayMs.toLong() * 1000L,  // 使用最后应用的延迟
-            preferredLabel = selectedSubtitleLabelState.value,
-            headers = headers
-        )
-        
-        assrtLanguagesState.value = langs
-        if (selectedSubtitleLabelState.value == null && defaultLabel != null) {
-            // 初始化时记录默认选择，便于弹窗高亮
-            selectedSubtitleLabelState.value = defaultLabel
-        }
-        
-        android.util.Log.d("VideoPlayer", "Subtitles loaded, mounting: uri=${mediaItem.localConfiguration?.uri} subCount=${mediaItem.localConfiguration?.subtitleConfigurations?.size}")
-        mediaItem.localConfiguration?.subtitleConfigurations?.forEachIndexed { idx, sc ->
-            android.util.Log.d("VideoPlayer", "subtitle[$idx]: uri=${sc.uri} mime=${sc.mimeType} lang=${sc.language} flags=${sc.selectionFlags}")
-        }
-        
-        // 无感挂载字幕：使用 replaceMediaItem 替代 setMediaItem，避免重新缓冲
-        val keepPositionMs = exoPlayer.currentPosition
-        val wasPlaying = exoPlayer.playWhenReady
-        
-        try {
-            // replaceMediaItem 会保持播放状态，不会重新缓冲
-            exoPlayer.replaceMediaItem(0, mediaItem)
-            
-            // 等待播放器更新轨道信息
-            kotlinx.coroutines.delay(150)
-            
-            // 重新应用用户选择的字幕（非常重要！）
-            if (selectedSubtitleLabelState.value != null) {
-                val lang = labelToLanguageTag(selectedSubtitleLabelState.value)
-                val params = exoPlayer.trackSelectionParameters
-                    .buildUpon()
-                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                    .clearOverridesOfType(C.TRACK_TYPE_TEXT)
-                    .setPreferredTextLanguage(lang)
-                    .build()
-                exoPlayer.trackSelectionParameters = params
-                android.util.Log.d("VideoPlayer", "Applied subtitle selection: ${selectedSubtitleLabelState.value} (lang=$lang)")
-            }
-            
-            // 如果位置有偏差，微调回正确位置
-            val currentPos = exoPlayer.currentPosition
-            if (kotlin.math.abs(currentPos - keepPositionMs) > 1000) {
-                exoPlayer.seekTo(keepPositionMs)
-                android.util.Log.d("VideoPlayer", "Position adjusted: ${keepPositionMs}ms")
-            }
-            
-            // 确保播放状态不变
-            if (wasPlaying && !exoPlayer.isPlaying) {
-                exoPlayer.play()
-            }
-            
-            android.util.Log.d("VideoPlayer", "Subtitles mounted seamlessly (no interruption)")
-        } catch (t: Throwable) {
-            android.util.Log.w("VideoPlayer", "Failed to mount subtitles seamlessly: ${t.message}")
-            // 回退到旧方法
-            exoPlayer.setMediaItem(mediaItem)
-            exoPlayer.prepare()
-            exoPlayer.seekTo(keepPositionMs)
-            exoPlayer.playWhenReady = wasPlaying
-        }
-    }
-    
-    // 单独处理字幕延迟调整，使用防抖动避免频繁触发
-    LaunchedEffect(subtitleDelayMsState.value) {
-        if (!playerInitialized) return@LaunchedEffect
-        val newDelay = subtitleDelayMsState.value
-        
-        // 如果延迟没变化，跳过
-        if (newDelay == lastAppliedDelayMs) return@LaunchedEffect
-        
-        // 防抖动：等待用户停止调整
-        kotlinx.coroutines.delay(500)
-        
-        // 再次检查延迟是否又被改变了（用户可能还在调整）
-        if (newDelay != subtitleDelayMsState.value) return@LaunchedEffect
-        
-        android.util.Log.d("VideoPlayer", "Applying subtitle delay: ${newDelay}ms")
-        
-        // 重新生成带延迟的字幕
-        val (mediaItem, _, _) = movieDetails.intoMediaItemDynamicSubAsync(
-            cacheDir = context.cacheDir,
-            subtitleDelayUs = newDelay.toLong() * 1000L,
-            preferredLabel = selectedSubtitleLabelState.value,
-            headers = headers
-        )
-        
-        val keepPositionMs = exoPlayer.currentPosition
-        val wasPlaying = exoPlayer.playWhenReady
-        
-        try {
-            exoPlayer.replaceMediaItem(0, mediaItem)
-            kotlinx.coroutines.delay(150)
-            
-            // 重新应用字幕选择
-            if (selectedSubtitleLabelState.value != null) {
-                val lang = labelToLanguageTag(selectedSubtitleLabelState.value)
-                val params = exoPlayer.trackSelectionParameters
-                    .buildUpon()
-                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                    .clearOverridesOfType(C.TRACK_TYPE_TEXT)
-                    .setPreferredTextLanguage(lang)
-                    .build()
-                exoPlayer.trackSelectionParameters = params
-            }
-            
-            // 恢复播放位置和状态
-            val currentPos = exoPlayer.currentPosition
-            if (kotlin.math.abs(currentPos - keepPositionMs) > 1000) {
-                exoPlayer.seekTo(keepPositionMs)
-            }
-            if (wasPlaying && !exoPlayer.isPlaying) {
-                exoPlayer.play()
-            }
-            
-            lastAppliedDelayMs = newDelay
-            android.util.Log.d("VideoPlayer", "Subtitle delay applied: ${newDelay}ms")
-        } catch (t: Throwable) {
-            android.util.Log.w("VideoPlayer", "Failed to apply subtitle delay: ${t.message}")
+            android.util.Log.d("VideoPlayer", "Video started")
         }
     }
     
@@ -435,19 +282,13 @@ fun VideoPlayerScreenContent(
     }
 
     BackHandler(onBack = {
-        // 1) 若字幕弹窗打开，先关闭弹窗
-        if (showSubtitlePopoverState.value) {
-            showSubtitlePopoverState.value = false
-            return@BackHandler
-        }
-
-        // 2) 若控制栏可见，先隐藏控制栏
+        // 若控制栏可见，先隐藏控制栏
         if (videoPlayerState.isControlsVisible) {
             videoPlayerState.hideControls()
             return@BackHandler
         }
 
-        // 3) 控制栏已隐藏，则退出播放器
+        // 控制栏已隐藏，则退出播放器
         try {
             // 保存播放进度
             val currentPosition = exoPlayer.currentPosition
@@ -516,10 +357,6 @@ fun VideoPlayerScreenContent(
                 }
 
                 if (it.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_BACK && it.nativeKeyEvent.action == KeyEvent.ACTION_UP) {
-                    if (showSubtitlePopoverState.value) {
-                        showSubtitlePopoverState.value = false
-                        return@onPreviewKeyEvent true
-                    }
                     if (videoPlayerState.isControlsVisible) {
                         videoPlayerState.hideControls()
                         return@onPreviewKeyEvent true
@@ -552,8 +389,6 @@ fun VideoPlayerScreenContent(
             isPlaying = exoPlayer.isPlaying,
             isControlsVisible = videoPlayerState.isControlsVisible,
             centerButton = { VideoPlayerPulse(pulseState) },
-            // While hold-seeking, do not render subtitles (avoid updating position during fast seek)
-            subtitles = { if (!isHoldSeeking.value) PlayerSubtitles(player = exoPlayer) },
             showControls = { if (!isHoldSeeking.value) videoPlayerState.showControls(exoPlayer.isPlaying) },
             controls = {
                 VideoPlayerControls(
@@ -561,101 +396,13 @@ fun VideoPlayerScreenContent(
                     movieDetails = movieDetails,
                     focusRequester = focusRequester,
                     onShowControls = { videoPlayerState.showControls(exoPlayer.isPlaying) },
-                    onClickSubtitles = { showSubtitlePopoverState.value = true },
-                    onClickAudio = { showAudioPopoverState.value = true }
+                    onClickSubtitles = { 
+                        // TODO: 实现字幕选择功能
+                    },
+                    onClickAudio = { 
+                        // TODO: 实现音轨选择功能
+                    }
                 )
-        if (showAudioPopoverState.value) {
-            // 音轨语言映射函数
-            fun displayAudioLanguage(code: String?): String {
-                if (code.isNullOrBlank() || code == "und") return "未知语言"
-                val lc = code.lowercase()
-                return when {
-                    lc == "mul" -> "多语言"
-                    lc == "zh-hans" || lc == "zh_cn" || lc == "zh-cn" || lc == "zh" || lc == "chi" || lc == "zho" -> "中文"
-                    lc.startsWith("zh-hant") || lc == "zh-tw" || lc == "zh-hk" -> "中文繁体"
-                    lc.startsWith("en") || lc == "eng" -> "英语"
-                    lc.startsWith("ja") || lc == "jpn" -> "日语"
-                    lc.startsWith("ko") || lc == "kor" -> "韩语"
-                    lc.startsWith("yue") -> "粤语"
-                    lc.startsWith("ar") || lc == "ara" -> "阿拉伯语"
-                    lc.startsWith("pt") || lc == "por" -> "葡萄牙语"
-                    lc.startsWith("th") || lc == "tha" -> "泰语"
-                    lc.startsWith("es") || lc == "spa" -> "西班牙语"
-                    lc.startsWith("fr") || lc == "fra" || lc == "fre" -> "法语"
-                    lc.startsWith("de") || lc == "deu" || lc == "ger" -> "德语"
-                    lc.startsWith("it") || lc == "ita" -> "意大利语"
-                    lc.startsWith("ru") || lc == "rus" -> "俄语"
-                    lc.startsWith("vi") || lc == "vie" -> "越南语"
-                    lc.startsWith("ms") || lc == "may" || lc == "msa" -> "马来语"
-                    lc.startsWith("id") || lc == "ind" -> "印尼语"
-                    lc.startsWith("hi") || lc == "hin" -> "印地语"
-                    lc.startsWith("tr") || lc == "tur" -> "土耳其语"
-                    lc.startsWith("pl") || lc == "pol" -> "波兰语"
-                    lc.startsWith("nl") || lc == "nld" || lc == "dut" -> "荷兰语"
-                    lc.startsWith("sv") || lc == "swe" -> "瑞典语"
-                    lc.startsWith("da") || lc == "dan" -> "丹麦语"
-                    lc.startsWith("no") || lc == "nor" -> "挪威语"
-                    lc.startsWith("fi") || lc == "fin" -> "芬兰语"
-                    lc.startsWith("el") || lc == "gre" || lc == "ell" -> "希腊语"
-                    lc.startsWith("he") || lc == "heb" -> "希伯来语"
-                    lc.startsWith("cs") || lc == "cze" || lc == "ces" -> "捷克语"
-                    lc.startsWith("hu") || lc == "hun" -> "匈牙利语"
-                    lc.startsWith("ro") || lc == "rum" || lc == "ron" -> "罗马尼亚语"
-                    lc.startsWith("uk") || lc == "ukr" -> "乌克兰语"
-                    lc.startsWith("bg") || lc == "bul" -> "保加利亚语"
-                    lc.startsWith("sr") || lc == "srp" -> "塞尔维亚语"
-                    lc.startsWith("hr") || lc == "hrv" -> "克罗地亚语"
-                    else -> code.uppercase()
-                }
-            }
-            
-            // 声道数映射函数
-            fun displayChannelCount(count: Int): String {
-                return when (count) {
-                    1 -> "单声道"
-                    2 -> "立体声"
-                    6 -> "5.1声道"
-                    8 -> "7.1声道"
-                    else -> "${count}声道"
-                }
-            }
-            
-            val audioGroups = exoPlayer.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
-            val formats = audioGroups.flatMap { g -> (0 until g.mediaTrackGroup.length).map { i -> g.mediaTrackGroup.getFormat(i) } }
-            val labels = formats.mapIndexed { i, f ->
-                val lang = displayAudioLanguage(f.language)
-                val ch = if (f.channelCount > 0) displayChannelCount(f.channelCount) else null
-                val codec = when {
-                    f.sampleMimeType?.contains("ac3", true) == true -> "AC3"
-                    f.sampleMimeType?.contains("eac3", true) == true -> "EAC3"
-                    f.sampleMimeType?.contains("dts", true) == true -> "DTS"
-                    f.sampleMimeType?.contains("aac", true) == true -> "AAC"
-                    f.sampleMimeType?.contains("opus", true) == true -> "Opus"
-                    f.sampleMimeType?.contains("vorbis", true) == true -> "Vorbis"
-                    f.sampleMimeType?.contains("flac", true) == true -> "FLAC"
-                    f.sampleMimeType?.contains("mp3", true) == true -> "MP3"
-                    else -> null
-                }
-                listOfNotNull(lang, ch, codec).joinToString(" · ").ifBlank { "音轨 ${i+1}" }
-            }
-            AudioDialog(
-                show = true,
-                onDismissRequest = { showAudioPopoverState.value = false },
-                options = listOf("关闭音轨") + labels,
-                selectedIndex = 1,
-                onSelectIndex = { idx ->
-                    if (idx <= 0) { showAudioPopoverState.value = false; return@AudioDialog }
-                    val fmt = formats.getOrNull(idx - 1) ?: return@AudioDialog
-                    val lang = fmt.language
-                    val params = exoPlayer.trackSelectionParameters.buildUpon()
-                        .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
-                        .setPreferredAudioLanguage(lang)
-                        .build()
-                    exoPlayer.trackSelectionParameters = params
-                    showAudioPopoverState.value = false
-                }
-            )
-        }
             }
         )
 
@@ -671,131 +418,6 @@ fun VideoPlayerScreenContent(
             )
         }
 
-        if (showSubtitlePopoverState.value) {
-            val textGroups = exoPlayer.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
-            data class InternalEntry(val label: String, val group: androidx.media3.common.Tracks.Group, val trackIndex: Int)
-            fun displayTextLanguage(code: String?): String {
-                if (code.isNullOrBlank()) return "未知语言"
-                val lc = code.lowercase()
-                return when {
-                    lc == "und" -> "未知语言"
-                    lc == "mul" -> "多语言"
-                    lc == "zh-hans" || lc == "zh_cn" || lc == "zh-cn" || lc == "zh" || lc == "chi" || lc == "zho" -> "简体中文"
-                    lc.startsWith("zh-hant") || lc == "zh-tw" || lc == "zh-hk" -> "繁体中文"
-                    lc.startsWith("en") -> "英语"
-                    lc.startsWith("ja") -> "日语"
-                    lc.startsWith("ko") -> "韩语"
-                    lc.startsWith("yue") -> "粤语"
-                    lc.startsWith("ar") -> "阿拉伯语"
-                    lc.startsWith("pt") -> "葡萄牙语"
-                    lc.startsWith("th") -> "泰语"
-                    lc.startsWith("es") || lc == "spa" -> "西班牙语"
-                    lc.startsWith("fr") || lc == "fra" || lc == "fre" -> "法语"
-                    lc.startsWith("de") || lc == "deu" || lc == "ger" -> "德语"
-                    lc.startsWith("it") || lc == "ita" -> "意大利语"
-                    lc.startsWith("ru") || lc == "rus" -> "俄语"
-                    lc.startsWith("vi") || lc == "vie" -> "越南语"
-                    lc.startsWith("ms") || lc == "may" || lc == "msa" -> "马来语"
-                    else -> lc
-                }
-            }
-            fun refineWithTrackLabel(base: String, trackLabel: String?): String {
-                val l = trackLabel?.lowercase() ?: return base
-                return when {
-                    l.contains("chs") || l.contains("简") || l.contains("sc") -> "简体中文"
-                    l.contains("cht") || l.contains("繁") || l.contains("tc") -> "繁体中文"
-                    l.contains("粵") || l.contains("粤") || l.contains("yue") || l.contains("canton") -> "粤语"
-                    else -> base
-                }
-            }
-            val internalEntries = mutableListOf<InternalEntry>()
-            for (g in textGroups) {
-                val len = g.mediaTrackGroup.length
-                for (i in 0 until len) {
-                    val f = g.mediaTrackGroup.getFormat(i)
-                    val base = displayTextLanguage(f.language)
-                    val friendly = refineWithTrackLabel(base, f.label)
-                    internalEntries += InternalEntry(label = friendly + "（内嵌）", group = g, trackIndex = i)
-                }
-            }
-            val internalLabels = internalEntries.map { it.label }
-            val externalLabels = assrtLanguagesState.value
-            val combined = externalLabels + internalLabels
-            SubtitleDialog(
-                show = true,
-                onDismissRequest = { showSubtitlePopoverState.value = false },
-                languages = combined,
-                selectedIndex = run {
-                    val current = selectedSubtitleLabelState.value
-                    // 如果用户明确选择了关闭字幕
-                    if (current == null) {
-                        0
-                    } else {
-                        // 优先在外部字幕中查找
-                        val extIdx = externalLabels.indexOf(current)
-                        if (extIdx >= 0) {
-                            extIdx + 1  // +1 是因为索引0是"关闭字幕"
-                        } else {
-                            // 在内嵌字幕中查找（带"（内嵌）"后缀）
-                            val intIdx = internalLabels.indexOfFirst { 
-                                it.contains(current) || current.contains(it.replace("（内嵌）", "").trim())
-                            }
-                            if (intIdx >= 0) {
-                                externalLabels.size + intIdx + 1
-                            } else {
-                                // 没找到，默认选择第一个可用字幕
-                                if (externalLabels.isNotEmpty()) 1 else if (internalLabels.isNotEmpty()) externalLabels.size + 1 else 0
-                            }
-                        }
-                    }
-                },
-                onSelectIndex = { idx ->
-                    if (idx == 0) {
-                        val params = exoPlayer.trackSelectionParameters
-                            .buildUpon()
-                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-                            .setPreferredTextLanguage(null)
-                            .build()
-                        exoPlayer.trackSelectionParameters = params
-                        selectedSubtitleLabelState.value = null
-                    } else {
-                        val oneBased = idx
-                        val isExternal = oneBased - 1 < externalLabels.size
-                        if (isExternal) {
-                            val label = externalLabels.getOrNull(oneBased - 1)
-                            val lang = labelToLanguageTag(label)
-                            val builder = exoPlayer.trackSelectionParameters
-                                .buildUpon()
-                                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                                .clearOverridesOfType(C.TRACK_TYPE_TEXT)
-                                .setPreferredTextLanguage(lang)
-                            exoPlayer.trackSelectionParameters = builder.build()
-                            selectedSubtitleLabelState.value = label
-                        } else {
-                            val internalIdx = oneBased - 1 - externalLabels.size
-                            val entry = internalEntries.getOrNull(internalIdx)
-                            if (entry != null) {
-                                val override = TrackSelectionOverride(entry.group.mediaTrackGroup, listOf(entry.trackIndex))
-                                val builder = exoPlayer.trackSelectionParameters
-                                    .buildUpon()
-                                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                                    .clearOverridesOfType(C.TRACK_TYPE_TEXT)
-                                    .addOverride(override)
-                                exoPlayer.trackSelectionParameters = builder.build()
-                                // 选择内嵌中文优先时，将外部选择状态设为对应文本，便于下次打开高亮
-                                selectedSubtitleLabelState.value = if (entry.label.contains("简体中文")) "简体中文" else null
-                            }
-                        }
-                    }
-                    showSubtitlePopoverState.value = false
-                },
-                subtitleDelayMs = subtitleDelayMsState.value,
-                onAdjustDelay = { delta ->
-                    val next = (subtitleDelayMsState.value + delta).coerceIn(-5000, 5000)
-                    subtitleDelayMsState.value = next
-                }
-            )
-        }
     }
 }
 
@@ -823,164 +445,6 @@ private fun Modifier.dPadEvents(
         videoPlayerState.showControls()
     }
 )
-
-private fun labelToLanguageTag(label: String?): String? = when (label) {
-    "简体中文", "双语" -> "zh"
-    "繁体中文" -> "zh-Hant"
-    "英语" -> "en"
-    else -> null
-}
-
-private suspend fun MovieDetails.intoMediaItemDynamicSubAsync(cacheDir: File, subtitleDelayUs: Long? = null, preferredLabel: String? = null, headers: Map<String, String> = emptyMap()): Triple<MediaItem, List<String>, String?> {
-    val assrtToken = BuildConfig.ASSRT_TOKEN
-    val builder = MediaItem.Builder().setUri(videoUri)
-    val subs = mutableListOf<MediaItem.SubtitleConfiguration>()
-    var selectedLangs: List<String> = emptyList()
-    var defaultPickedLabel: String? = null
-    try {
-        if (!assrtToken.isNullOrBlank()) {
-            val api = AssrtApi(assrtToken)
-            val keyword = name.ifBlank { director.ifBlank { releaseDate } }
-            val selected = api.searchBest(keyword)
-            android.util.Log.d("VideoPlayer", "ASSRT search keyword=$keyword id=${selected?.id}")
-            if (selected?.id != null) {
-                val detail = api.detail(selected.id)
-                selectedLangs = detail.labels
-                android.util.Log.d("VideoPlayer", "ASSRT detail urls=${detail.urls.size} labels=${detail.labels}")
-
-                // 识别各URL对应的标签（若无法从URL推断，则回落到接口返回的labels或“未知”）
-                fun labelOfUrl(url: String): String? {
-                    val p = url.substringBefore('?').lowercase()
-                    return when {
-                        p.contains("chs&eng") || (p.contains("chs") && p.contains("eng")) || p.contains("双语") -> "双语"
-                        (p.contains(".chs.") || p.endsWith(".chs.srt") || p.contains("chs") || p.contains("sc")) && !p.contains("cht") -> "简体中文"
-                        p.contains(".cht.") || p.endsWith(".cht.srt") || p.contains("cht") || p.contains("tc") -> "繁体中文"
-                        p.contains("eng") || p.contains("en") -> "英语"
-                        else -> null
-                    }
-                }
-
-                val allowed = detail.urls.filter { SubtitleMime.fromUrl(it) != null }
-                android.util.Log.d("VideoPlayer", "ASSRT allowedUrls=${allowed.size}")
-                val labelToUrl = linkedMapOf<String, String>()
-                var fallbackIdx = 0
-                for (u in allowed) {
-                    val inferred = labelOfUrl(u)
-                    val lbl = inferred ?: detail.labels.getOrNull(fallbackIdx) ?: "未知"
-                    if (!labelToUrl.containsKey(lbl)) {
-                        labelToUrl[lbl] = u
-                        if (inferred == null) fallbackIdx++
-                    }
-                }
-
-                // 确定默认选择
-                val priority = listOf("双语", "简体中文", "繁体中文", "英语")
-                val defaultLabel = preferredLabel ?: priority.firstOrNull { labelToUrl.containsKey(it) }
-                defaultPickedLabel = defaultLabel
-
-                // 下载所有字幕文件（字符集检测已优化）
-                val client = OkHttpClient()
-                for ((lbl, u) in labelToUrl) {
-                    val mime = SubtitleMime.fromUrl(u) ?: MimeTypes.TEXT_VTT
-                    val tmp = SubtitleFetcher.fetchToUtf8File(
-                        url = u,
-                        client = client,
-                        cacheDir = cacheDir,
-                        timeShiftMs = ((subtitleDelayUs ?: 0L) / 1000L).toInt(),
-                        mime = mime
-                    )
-                    val uri = if (tmp != null) Uri.fromFile(tmp) else Uri.parse(u)
-                    val scBuilder = MediaItem.SubtitleConfiguration
-                        .Builder(uri)
-                        .setMimeType(mime)
-                        .setLanguage(labelToLanguageTag(lbl))
-                        .setLabel(lbl)
-                    if (lbl == defaultLabel) scBuilder.setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
-                    subs += scBuilder.build()
-                }
-            }
-        }
-        // 在尝试 ASSRT 之前，优先尝试同目录同名字幕文件（WebDAV 直链）
-        if (subs.isEmpty()) {
-            val parent = videoUri.substringBeforeLast('/')
-            val base = videoUri.substringAfterLast('/').substringBeforeLast('.')
-            val exts = listOf("srt","vtt","ass","ssa","ttml","dfxp")
-            val langHints = listOf("chs&eng","chs","cht","sc","tc","eng","en")
-            val candidates = mutableListOf<String>()
-            // 精确同名优先
-            for (ext in exts) candidates += "$parent/$base.$ext"
-            // 带语言后缀
-            for (hint in langHints) for (ext in exts) candidates += "$parent/$base.$hint.$ext"
-
-            fun detectLabelFromName(name: String): String? {
-                val n = name.lowercase()
-                return when {
-                    n.contains("chs&eng") || (n.contains("chs") && n.contains("eng")) || n.contains("bilingual") -> "双语"
-                    n.contains(".chs.") || n.endsWith(".chs.srt") || n.contains("sc") || n.contains("chinese") -> "简体中文"
-                    n.contains(".cht.") || n.endsWith(".cht.srt") || n.contains("tc") -> "繁体中文"
-                    n.contains("eng") || n.contains("en") -> "英语"
-                    else -> null
-                }
-            }
-
-            val authHeaders = headers // 避免与 Request.Builder 的 headers 属性冲突
-            val headerInterceptor = Interceptor { chain ->
-                val req = chain.request().newBuilder().apply {
-                    // 添加 WebDAV 鉴权头（Basic Auth）
-                    authHeaders.forEach { (key, value) ->
-                        header(key, value)
-                    }
-                }.build()
-                chain.proceed(req)
-            }
-            val client = OkHttpClient.Builder().addInterceptor(headerInterceptor).build()
-
-            // 探测和下载 WebDAV 字幕文件（字符集检测已优化）
-            val picked = mutableMapOf<String, String>()
-            for (u in candidates) {
-                val mime = SubtitleMime.fromUrl(u) ?: continue
-                val tmp = SubtitleFetcher.fetchToUtf8File(
-                    url = u,
-                    client = client,
-                    cacheDir = cacheDir,
-                    timeShiftMs = ((subtitleDelayUs ?: 0L) / 1000L).toInt(),
-                    mime = mime
-                )
-                if (tmp != null) {
-                    val lbl = detectLabelFromName(u) ?: "未知"
-                    picked.putIfAbsent(lbl, u)
-                }
-            }
-            if (picked.isNotEmpty()) {
-                val priority = listOf("双语","简体中文","繁体中文","英语","未知")
-                val defaultLabel = preferredLabel ?: priority.firstOrNull { picked.containsKey(it) }
-                defaultPickedLabel = defaultLabel
-                for ((lbl, u) in picked) {
-                    val mime = SubtitleMime.fromUrl(u) ?: MimeTypes.TEXT_VTT
-                    val tmp = SubtitleFetcher.fetchToUtf8File(
-                        url = u,
-                        client = client,
-                        cacheDir = cacheDir,
-                        timeShiftMs = ((subtitleDelayUs ?: 0L) / 1000L).toInt(),
-                        mime = mime
-                    )
-                    val uri = if (tmp != null) Uri.fromFile(tmp) else Uri.parse(u)
-                    val sc = MediaItem.SubtitleConfiguration.Builder(uri)
-                        .setMimeType(mime)
-                        .setLanguage(labelToLanguageTag(lbl))
-                        .setLabel(lbl)
-                        .apply { if (lbl == defaultLabel) setSelectionFlags(C.SELECTION_FLAG_DEFAULT) }
-                        .build()
-                    subs += sc
-                }
-                selectedLangs = picked.keys.toList()
-            }
-        }
-    } catch (t: Throwable) {
-        android.util.Log.w("VideoPlayer", "ASSRT failed: ${t.message}")
-    }
-    return Triple(builder.setSubtitleConfigurations(subs).build(), selectedLangs, defaultPickedLabel)
-}
 
 private fun Movie.intoMediaItem(): MediaItem {
     return MediaItem.Builder()

@@ -20,22 +20,16 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Audiotrack
+import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
-import androidx.media3.common.Tracks
-import android.util.Log
 import com.google.jetstream.data.entities.MovieDetails
 import com.google.jetstream.data.util.StringConstants
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.wrapContentWidth
-import androidx.compose.ui.Alignment.Companion.CenterHorizontally
 
 @Composable
 fun VideoPlayerControls(
@@ -44,15 +38,9 @@ fun VideoPlayerControls(
     focusRequester: FocusRequester,
     onShowControls: () -> Unit = {},
     onClickSubtitles: () -> Unit = {},
-    onClickAudio: () -> Unit = {},
+    onClickAudio: () -> Unit = {}
 ) {
     val isPlaying = player.isPlaying
-
-    try {
-        val tracks: Tracks = player.currentTracks
-        val hasText = tracks.groups.any { it.type == androidx.media3.common.C.TRACK_TYPE_TEXT }
-        Log.d("VideoPlayerControls", "currentTracks: hasText=$hasText groups=${tracks.groups.size}")
-    } catch (_: Throwable) {}
 
     VideoPlayerMainFrame(
         mediaTitle = {
@@ -72,16 +60,14 @@ fun VideoPlayerControls(
                 VideoPlayerControlsIcon(
                     icon = Icons.Default.ClosedCaption,
                     isPlaying = isPlaying,
-                    contentDescription =
-                    StringConstants.Composable.VideoPlayerControlClosedCaptionsButton,
+                    contentDescription = StringConstants.Composable.VideoPlayerControlClosedCaptionsButton,
                     onShowControls = onShowControls,
                     onClick = onClickSubtitles
                 )
                 VideoPlayerControlsIcon(
                     icon = Icons.Default.Audiotrack,
                     isPlaying = isPlaying,
-                    contentDescription =
-                    StringConstants.Composable.VideoPlayerControlSettingsButton,
+                    contentDescription = StringConstants.Composable.VideoPlayerControlSettingsButton,
                     onShowControls = onShowControls,
                     onClick = onClickAudio
                 )

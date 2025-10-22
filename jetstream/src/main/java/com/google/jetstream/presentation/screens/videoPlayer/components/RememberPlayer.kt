@@ -47,11 +47,6 @@ fun rememberPlayer(context: Context, headers: Map<String, String> = emptyMap()) 
             parameters = buildUponParameters()
                 .setPreferredVideoMimeType(null) // 交由设备自行选择 HDR/SDR 解码
                 .setPreferredVideoRoleFlags(0)
-                // 自动选择文本轨（字幕）：
-                // 1) 优先中文；2) 当语言未知时也尝试选择字幕
-                .setPreferredTextLanguage("zh")
-                .setSelectUndeterminedTextLanguage(true)
-                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
                 .build()
         })
         .setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING)
