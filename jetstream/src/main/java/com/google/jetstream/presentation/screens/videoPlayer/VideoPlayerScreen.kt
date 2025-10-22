@@ -266,7 +266,8 @@ fun VideoPlayerScreenContent(
         val (mediaItem, langs, defaultLabel) = movieDetails.intoMediaItemDynamicSubAsync(
             cacheDir = context.cacheDir,
             subtitleDelayUs = subtitleDelayMsState.value.toLong() * 1000L,
-            preferredLabel = selectedSubtitleLabelState.value
+            preferredLabel = selectedSubtitleLabelState.value,
+            headers = headers
         )
         assrtLanguagesState.value = langs
         if (selectedSubtitleLabelState.value == null && defaultLabel != null) {
@@ -440,12 +441,78 @@ fun VideoPlayerScreenContent(
                     onClickAudio = { showAudioPopoverState.value = true }
                 )
         if (showAudioPopoverState.value) {
+            // 音轨语言映射函数
+            fun displayAudioLanguage(code: String?): String {
+                if (code.isNullOrBlank() || code == "und") return "未知语言"
+                val lc = code.lowercase()
+                return when {
+                    lc == "mul" -> "多语言"
+                    lc == "zh-hans" || lc == "zh_cn" || lc == "zh-cn" || lc == "zh" || lc == "chi" || lc == "zho" -> "中文"
+                    lc.startsWith("zh-hant") || lc == "zh-tw" || lc == "zh-hk" -> "中文繁体"
+                    lc.startsWith("en") || lc == "eng" -> "英语"
+                    lc.startsWith("ja") || lc == "jpn" -> "日语"
+                    lc.startsWith("ko") || lc == "kor" -> "韩语"
+                    lc.startsWith("yue") -> "粤语"
+                    lc.startsWith("ar") || lc == "ara" -> "阿拉伯语"
+                    lc.startsWith("pt") || lc == "por" -> "葡萄牙语"
+                    lc.startsWith("th") || lc == "tha" -> "泰语"
+                    lc.startsWith("es") || lc == "spa" -> "西班牙语"
+                    lc.startsWith("fr") || lc == "fra" || lc == "fre" -> "法语"
+                    lc.startsWith("de") || lc == "deu" || lc == "ger" -> "德语"
+                    lc.startsWith("it") || lc == "ita" -> "意大利语"
+                    lc.startsWith("ru") || lc == "rus" -> "俄语"
+                    lc.startsWith("vi") || lc == "vie" -> "越南语"
+                    lc.startsWith("ms") || lc == "may" || lc == "msa" -> "马来语"
+                    lc.startsWith("id") || lc == "ind" -> "印尼语"
+                    lc.startsWith("hi") || lc == "hin" -> "印地语"
+                    lc.startsWith("tr") || lc == "tur" -> "土耳其语"
+                    lc.startsWith("pl") || lc == "pol" -> "波兰语"
+                    lc.startsWith("nl") || lc == "nld" || lc == "dut" -> "荷兰语"
+                    lc.startsWith("sv") || lc == "swe" -> "瑞典语"
+                    lc.startsWith("da") || lc == "dan" -> "丹麦语"
+                    lc.startsWith("no") || lc == "nor" -> "挪威语"
+                    lc.startsWith("fi") || lc == "fin" -> "芬兰语"
+                    lc.startsWith("el") || lc == "gre" || lc == "ell" -> "希腊语"
+                    lc.startsWith("he") || lc == "heb" -> "希伯来语"
+                    lc.startsWith("cs") || lc == "cze" || lc == "ces" -> "捷克语"
+                    lc.startsWith("hu") || lc == "hun" -> "匈牙利语"
+                    lc.startsWith("ro") || lc == "rum" || lc == "ron" -> "罗马尼亚语"
+                    lc.startsWith("uk") || lc == "ukr" -> "乌克兰语"
+                    lc.startsWith("bg") || lc == "bul" -> "保加利亚语"
+                    lc.startsWith("sr") || lc == "srp" -> "塞尔维亚语"
+                    lc.startsWith("hr") || lc == "hrv" -> "克罗地亚语"
+                    else -> code.uppercase()
+                }
+            }
+            
+            // 声道数映射函数
+            fun displayChannelCount(count: Int): String {
+                return when (count) {
+                    1 -> "单声道"
+                    2 -> "立体声"
+                    6 -> "5.1声道"
+                    8 -> "7.1声道"
+                    else -> "${count}声道"
+                }
+            }
+            
             val audioGroups = exoPlayer.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
             val formats = audioGroups.flatMap { g -> (0 until g.mediaTrackGroup.length).map { i -> g.mediaTrackGroup.getFormat(i) } }
             val labels = formats.mapIndexed { i, f ->
-                val lang = f.language ?: "und"
-                val ch = if (f.channelCount > 0) "${f.channelCount}ch" else null
-                listOfNotNull(lang, ch).joinToString(" · ").ifBlank { "Audio ${i+1}" }
+                val lang = displayAudioLanguage(f.language)
+                val ch = if (f.channelCount > 0) displayChannelCount(f.channelCount) else null
+                val codec = when {
+                    f.sampleMimeType?.contains("ac3", true) == true -> "AC3"
+                    f.sampleMimeType?.contains("eac3", true) == true -> "EAC3"
+                    f.sampleMimeType?.contains("dts", true) == true -> "DTS"
+                    f.sampleMimeType?.contains("aac", true) == true -> "AAC"
+                    f.sampleMimeType?.contains("opus", true) == true -> "Opus"
+                    f.sampleMimeType?.contains("vorbis", true) == true -> "Vorbis"
+                    f.sampleMimeType?.contains("flac", true) == true -> "FLAC"
+                    f.sampleMimeType?.contains("mp3", true) == true -> "MP3"
+                    else -> null
+                }
+                listOfNotNull(lang, ch, codec).joinToString(" · ").ifBlank { "音轨 ${i+1}" }
             }
             AudioDialog(
                 show = true,
@@ -503,6 +570,8 @@ fun VideoPlayerScreenContent(
                     lc.startsWith("de") || lc == "deu" || lc == "ger" -> "德语"
                     lc.startsWith("it") || lc == "ita" -> "意大利语"
                     lc.startsWith("ru") || lc == "rus" -> "俄语"
+                    lc.startsWith("vi") || lc == "vie" -> "越南语"
+                    lc.startsWith("ms") || lc == "may" || lc == "msa" -> "马来语"
                     else -> lc
                 }
             }
@@ -627,7 +696,7 @@ private fun labelToLanguageTag(label: String?): String? = when (label) {
     else -> null
 }
 
-private suspend fun MovieDetails.intoMediaItemDynamicSubAsync(cacheDir: File, subtitleDelayUs: Long? = null, preferredLabel: String? = null): Triple<MediaItem, List<String>, String?> {
+private suspend fun MovieDetails.intoMediaItemDynamicSubAsync(cacheDir: File, subtitleDelayUs: Long? = null, preferredLabel: String? = null, headers: Map<String, String> = emptyMap()): Triple<MediaItem, List<String>, String?> {
     val assrtToken = BuildConfig.ASSRT_TOKEN
     val builder = MediaItem.Builder().setUri(videoUri)
     val subs = mutableListOf<MediaItem.SubtitleConfiguration>()
@@ -712,9 +781,13 @@ private suspend fun MovieDetails.intoMediaItemDynamicSubAsync(cacheDir: File, su
                 }
             }
 
+            val authHeaders = headers // 避免与 Request.Builder 的 headers 属性冲突
             val headerInterceptor = Interceptor { chain ->
                 val req = chain.request().newBuilder().apply {
-                    // 可按需补充鉴权头（如 Basic/Cookie），此处保持原样
+                    // 添加 WebDAV 鉴权头（Basic Auth）
+                    authHeaders.forEach { (key, value) ->
+                        header(key, value)
+                    }
                 }.build()
                 chain.proceed(req)
             }
