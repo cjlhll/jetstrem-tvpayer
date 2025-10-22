@@ -18,6 +18,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
@@ -108,32 +112,59 @@ class DashboardViewModel @Inject constructor(
                     Log.e(TAG, "清除剧集缓存失败: ${e.message}", e)
                 }
                 
-                val aggregated = mutableListOf<Movie>()
+                // 使用线程安全的集合
+                val aggregated = kotlinx.coroutines.sync.Mutex()
+                val aggregatedMovies = mutableListOf<Movie>()
                 val aggregatedTv = mutableListOf<Movie>()
-                val visited = mutableSetOf<String>()
+                val visited = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+                
                 val directories = resourceDirectoryDao.getAllDirectories().first()
-                for (dir in directories) {
-                    val config: WebDavConfigEntity = webDavConfigDao.getConfigById(dir.webDavConfigId)
-                        ?: continue
-                    // 设置 WebDAV 客户端配置
-                    webDavService.setConfig(
-                        com.google.jetstream.data.webdav.WebDavConfig(
-                            serverUrl = config.serverUrl,
-                            username = config.username,
-                            password = config.password,
-                            displayName = config.displayName,
-                            isEnabled = true
-                        )
-                    )
+                
+                // 并行处理所有目录
+                kotlinx.coroutines.coroutineScope {
+                    directories.map { dir ->
+                        launch(Dispatchers.IO) {
+                            try {
+                                val config: WebDavConfigEntity = webDavConfigDao.getConfigById(dir.webDavConfigId)
+                                    ?: return@launch
+                                // 设置 WebDAV 客户端配置
+                                webDavService.setConfig(
+                                    com.google.jetstream.data.webdav.WebDavConfig(
+                                        serverUrl = config.serverUrl,
+                                        username = config.username,
+                                        password = config.password,
+                                        displayName = config.displayName,
+                                        isEnabled = true
+                                    )
+                                )
 
-                    val startPath = dir.path
-                    val startNorm = startPath.trim('/').replace(Regex("/+"), "/")
-                    Log.i(TAG, "开始扫描：${config.displayName} -> ${if (startNorm.isEmpty()) "/" else startNorm}")
-                    // 遍历收集电影与电视剧（去重递归），传入当前的WebDAV配置ID
-                    traverseAndScrape(startNorm, aggregated, aggregatedTv, visited, config.id)
+                                val startPath = dir.path
+                                val startNorm = startPath.trim('/').replace(Regex("/+"), "/")
+                                Log.i(TAG, "开始扫描：${config.displayName} -> ${if (startNorm.isEmpty()) "/" else startNorm}")
+                                
+                                // 为每个目录创建临时列表
+                                val dirMovies = mutableListOf<Movie>()
+                                val dirTv = mutableListOf<Movie>()
+                                
+                                // 遍历收集电影与电视剧（去重递归），传入当前的WebDAV配置ID
+                                traverseAndScrape(startNorm, dirMovies, dirTv, visited, config.id)
+                                
+                                // 合并到总列表（需要加锁）
+                                aggregated.withLock {
+                                    aggregatedMovies.addAll(dirMovies)
+                                    aggregatedTv.addAll(dirTv)
+                                }
+                                
+                                Log.i(TAG, "目录扫描完成：${config.displayName}，电影=${dirMovies.size}，电视剧=${dirTv.size}")
+                            } catch (e: Exception) {
+                                Log.e(TAG, "处理目录失败: ${dir.path}, ${e.message}", e)
+                            }
+                        }
+                    }.forEach { it.join() }
                 }
+                
                 // 去重并更新首页 Movies/TV 模块数据源，并持久化到数据库
-                val moviesDistinct = aggregated.distinctBy { it.id }
+                val moviesDistinct = aggregatedMovies.distinctBy { it.id }
                 val tvDistinct = aggregatedTv.distinctBy { it.id }
                 scrapedMoviesStore.setMovies(moviesDistinct)
                 scrapedTvStore.setShows(tvDistinct)
@@ -200,47 +231,64 @@ class DashboardViewModel @Inject constructor(
                         Log.i(TAG, "剧集目录匹配: $folderTitleRaw -> ${m.name ?: m.title} (${m.id})，库中${localEpisodeCount}集，${seasons.size}季")
                     }
                 } else {
-                    // 文件逐个尝试电影匹配
-                    for (file in files) {
-                        val rawName = stripExtension(file.name)
-                        val cleaned = extractTitleFromName(rawName)
-                        val candidates = buildCandidates(cleaned)
-                        val year = extractYear(rawName)
-                        val english = isEnglishTitle(rawName)
-                        var matched: TmdbApi.SearchItem? = null
-                        for (q in candidates) {
-                            val extras = mutableMapOf("include_adult" to "false")
-                            if (year != null) extras["year"] = year
-                            if (english) extras["region"] = "US"
-                            val r = TmdbApi.search("/3/search/movie", q, extras)
-                            matched = r?.results?.firstOrNull()
-                            if (matched != null) {
-                                val base = webDavService.getCurrentConfig()?.getFormattedServerUrl()?.removeSuffix("/") ?: ""
-                                val rel = (if (path.isBlank()) file.name else "$path/${file.name}")
-                                    .trim('/')
-                                    .replace(Regex("/+"), "/")
-                                val fullUrl = if (base.isNotBlank()) "$base/$rel" else rel
-                                Log.i(TAG, "WebDAV 视频URL: $fullUrl")
-                                
-                                // 获取完整的TMDB详情信息，同时传入WebDAV配置ID
-                                val movieWithDetails = createMovieWithFullDetails(matched, fullUrl, currentWebDavConfigId)
-                                aggregatedMovies.add(movieWithDetails)
-                                
-                                Log.i(TAG, "电影匹配: $q -> ${matched.title ?: matched.name} (${matched.id})")
-                                break
+                    // 并行处理所有文件的电影匹配
+                    kotlinx.coroutines.coroutineScope {
+                        val movieDeferred = files.map { file ->
+                            async(Dispatchers.IO) {
+                                try {
+                                    val rawName = stripExtension(file.name)
+                                    val cleaned = extractTitleFromName(rawName)
+                                    val candidates = buildCandidates(cleaned)
+                                    val year = extractYear(rawName)
+                                    val english = isEnglishTitle(rawName)
+                                    var matched: TmdbApi.SearchItem? = null
+                                    for (q in candidates) {
+                                        val extras = mutableMapOf("include_adult" to "false")
+                                        if (year != null) extras["year"] = year
+                                        if (english) extras["region"] = "US"
+                                        val r = TmdbApi.search("/3/search/movie", q, extras)
+                                        matched = r?.results?.firstOrNull()
+                                        if (matched != null) {
+                                            val base = webDavService.getCurrentConfig()?.getFormattedServerUrl()?.removeSuffix("/") ?: ""
+                                            val rel = (if (path.isBlank()) file.name else "$path/${file.name}")
+                                                .trim('/')
+                                                .replace(Regex("/+"), "/")
+                                            val fullUrl = if (base.isNotBlank()) "$base/$rel" else rel
+                                            Log.i(TAG, "WebDAV 视频URL: $fullUrl")
+                                            
+                                            // 获取完整的TMDB详情信息，同时传入WebDAV配置ID
+                                            val movieWithDetails = createMovieWithFullDetails(matched, fullUrl, currentWebDavConfigId)
+                                            
+                                            Log.i(TAG, "电影匹配: $q -> ${matched.title ?: matched.name} (${matched.id})")
+                                            return@async movieWithDetails
+                                        }
+                                    }
+                                    null
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "处理文件失败: ${file.name}, ${e.message}")
+                                    null
+                                }
                             }
+                        }
+                        
+                        movieDeferred.awaitAll().filterNotNull().forEach { movie ->
+                            aggregatedMovies.add(movie)
                         }
                     }
                 }
 
-                // 递归深入（过滤当前目录自身，避免 .../电视剧/电视剧 或 .../凡人修仙传/凡人修仙传）
+                // 并行递归处理子目录（过滤当前目录自身，避免 .../电视剧/电视剧 或 .../凡人修仙传/凡人修仙传）
                 val currName = currentDirName(path)
-                for (dir in folders) {
-                    // DavResource.name 可能是全路径或带尾斜杠，这里只取末段作为子目录名
-                    val childName = dir.name.substringAfterLast('/').removeSuffix("/")
-                    if (childName.isBlank() || childName == currName) continue // 过滤当前目录自身
-                    val next = (if (path.isBlank()) childName else "$path/$childName").trim('/').replace(Regex("/+"), "/")
-                    traverseAndScrape(next, aggregatedMovies, aggregatedTv, visited, currentWebDavConfigId)
+                kotlinx.coroutines.coroutineScope {
+                    folders.map { dir ->
+                        launch(Dispatchers.IO) {
+                            // DavResource.name 可能是全路径或带尾斜杠，这里只取末段作为子目录名
+                            val childName = dir.name.substringAfterLast('/').removeSuffix("/")
+                            if (childName.isBlank() || childName == currName) return@launch // 过滤当前目录自身
+                            val next = (if (path.isBlank()) childName else "$path/$childName").trim('/').replace(Regex("/+"), "/")
+                            traverseAndScrape(next, aggregatedMovies, aggregatedTv, visited, currentWebDavConfigId)
+                        }
+                    }.forEach { it.join() }
                 }
             }
             is WebDavResult.Error -> Log.w(TAG, "列目录失败(${path}): ${res.message}")
@@ -337,15 +385,36 @@ class DashboardViewModel @Inject constructor(
      */
     private suspend fun createMovieWithFullDetails(searchItem: TmdbApi.SearchItem, videoUri: String, webDavConfigId: String): Movie {
         try {
-            // 获取完整的TMDB详情信息
-            val details = TmdbService.getMovieDetails(searchItem.id.toString())
-            val credits = TmdbService.getCredits(searchItem.id.toString())
-            val certification = TmdbService.getReleaseCertification(searchItem.id.toString()) ?: "PG-13"
-            val similar = TmdbService.getSimilar(searchItem.id.toString())?.results ?: emptyList()
+            // 并行获取所有TMDB详情信息
+            val detailsResult: com.google.jetstream.data.remote.TmdbService.MovieDetailsResponse?
+            val creditsResult: com.google.jetstream.data.remote.TmdbService.CreditsResponse?
+            val certificationResult: String
+            val similarResult: List<com.google.jetstream.data.remote.TmdbService.SimilarItem>
+            
+            kotlinx.coroutines.coroutineScope {
+                val detailsDeferred = async(Dispatchers.IO) { 
+                    TmdbService.getMovieDetails(searchItem.id.toString()) 
+                }
+                val creditsDeferred = async(Dispatchers.IO) { 
+                    TmdbService.getCredits(searchItem.id.toString()) 
+                }
+                val certificationDeferred = async(Dispatchers.IO) { 
+                    TmdbService.getReleaseCertification(searchItem.id.toString()) ?: "PG-13" 
+                }
+                val similarDeferred = async(Dispatchers.IO) { 
+                    TmdbService.getSimilar(searchItem.id.toString())?.results ?: emptyList() 
+                }
+                
+                detailsResult = detailsDeferred.await()
+                creditsResult = creditsDeferred.await()
+                certificationResult = certificationDeferred.await()
+                @Suppress("UNCHECKED_CAST")
+                similarResult = similarDeferred.await() as List<com.google.jetstream.data.remote.TmdbService.SimilarItem>
+            }
             
             // 使用显式的序列化器将各部分转换为 JsonElement，避免 Map<String, Any> 导致的序列化错误
             val fullDetailsJson = buildMap<String, kotlinx.serialization.json.JsonElement> {
-                details?.let {
+                detailsResult?.let {
                     put(
                         "tmdb_details",
                         Json.encodeToJsonElement(
@@ -354,7 +423,7 @@ class DashboardViewModel @Inject constructor(
                         )
                     )
                 }
-                credits?.let {
+                creditsResult?.let {
                     put(
                         "tmdb_credits",
                         Json.encodeToJsonElement(
@@ -363,16 +432,14 @@ class DashboardViewModel @Inject constructor(
                         )
                     )
                 }
-                certification?.let {
-                    put("tmdb_certification", JsonPrimitive(it))
-                }
+                put("tmdb_certification", JsonPrimitive(certificationResult))
                 put(
                     "tmdb_similar",
                     Json.encodeToJsonElement(
                         kotlinx.serialization.builtins.ListSerializer(
                             com.google.jetstream.data.remote.TmdbService.SimilarItem.serializer()
                         ),
-                        similar.take(10)
+                        similarResult.take(10)
                     )
                 )
                 // 添加WebDAV配置ID
@@ -410,15 +477,36 @@ class DashboardViewModel @Inject constructor(
      */
     private suspend fun createTvWithFullDetails(searchItem: TmdbApi.SearchItem, videoUri: String, localEpisodeCount: Int = 0, seasons: List<com.google.jetstream.data.entities.TvSeason> = emptyList(), webDavConfigId: String): Movie {
         try {
-            // 获取完整的TMDB电视剧详情信息
-            val details = TmdbService.getTvDetails(searchItem.id.toString())
-            val credits = TmdbService.getTvCredits(searchItem.id.toString())
-            val contentRating = TmdbService.getTvContentRating(searchItem.id.toString()) ?: "TV-14"
-            val similar = TmdbService.getTvSimilar(searchItem.id.toString())?.results ?: emptyList()
+            // 并行获取所有TMDB电视剧详情信息
+            val detailsResult: com.google.jetstream.data.remote.TmdbService.TvDetailsResponse?
+            val creditsResult: com.google.jetstream.data.remote.TmdbService.CreditsResponse?
+            val contentRatingResult: String
+            val similarResult: List<com.google.jetstream.data.remote.TmdbService.SimilarItem>
+            
+            kotlinx.coroutines.coroutineScope {
+                val detailsDeferred = async(Dispatchers.IO) { 
+                    TmdbService.getTvDetails(searchItem.id.toString()) 
+                }
+                val creditsDeferred = async(Dispatchers.IO) { 
+                    TmdbService.getTvCredits(searchItem.id.toString()) 
+                }
+                val contentRatingDeferred = async(Dispatchers.IO) { 
+                    TmdbService.getTvContentRating(searchItem.id.toString()) ?: "TV-14" 
+                }
+                val similarDeferred = async(Dispatchers.IO) { 
+                    TmdbService.getTvSimilar(searchItem.id.toString())?.results ?: emptyList() 
+                }
+                
+                detailsResult = detailsDeferred.await()
+                creditsResult = creditsDeferred.await()
+                contentRatingResult = contentRatingDeferred.await()
+                @Suppress("UNCHECKED_CAST")
+                similarResult = similarDeferred.await() as List<com.google.jetstream.data.remote.TmdbService.SimilarItem>
+            }
             
             // 使用显式的序列化器将各部分转换为 JsonElement，避免 Map<String, Any> 导致的序列化错误
             val fullDetailsJson = buildMap<String, kotlinx.serialization.json.JsonElement> {
-                details?.let {
+                detailsResult?.let {
                     put(
                         "tmdb_details",
                         Json.encodeToJsonElement(
@@ -427,7 +515,7 @@ class DashboardViewModel @Inject constructor(
                         )
                     )
                 }
-                credits?.let {
+                creditsResult?.let {
                     put(
                         "tmdb_credits",
                         Json.encodeToJsonElement(
@@ -436,16 +524,14 @@ class DashboardViewModel @Inject constructor(
                         )
                     )
                 }
-                contentRating?.let {
-                    put("tmdb_certification", JsonPrimitive(it))
-                }
+                put("tmdb_certification", JsonPrimitive(contentRatingResult))
                 put(
                     "tmdb_similar",
                     Json.encodeToJsonElement(
                         kotlinx.serialization.builtins.ListSerializer(
                             com.google.jetstream.data.remote.TmdbService.SimilarItem.serializer()
                         ),
-                        similar.take(10)
+                        similarResult.take(10)
                     )
                 )
                 // 添加本地集数信息
