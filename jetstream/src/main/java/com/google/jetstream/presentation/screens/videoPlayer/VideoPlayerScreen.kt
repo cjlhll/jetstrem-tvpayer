@@ -713,23 +713,29 @@ private suspend fun MovieDetails.intoMediaItemDynamicSubAsync(cacheDir: File, su
                 selectedLangs = detail.labels
                 android.util.Log.d("VideoPlayer", "ASSRT detail urls=${detail.urls.size} labels=${detail.labels}")
 
-                // 识别各URL对应的标签
+                // 识别各URL对应的标签（若无法从URL推断，则回落到接口返回的labels或“未知”）
                 fun labelOfUrl(url: String): String? {
                     val p = url.substringBefore('?').lowercase()
                     return when {
                         p.contains("chs&eng") || (p.contains("chs") && p.contains("eng")) || p.contains("双语") -> "双语"
-                        (p.contains(".chs.") || p.endsWith(".chs.srt") || p.contains("chs")) && !p.contains("cht") -> "简体中文"
-                        p.contains("cht") -> "繁体中文"
-                        p.contains("eng") -> "英语"
+                        (p.contains(".chs.") || p.endsWith(".chs.srt") || p.contains("chs") || p.contains("sc")) && !p.contains("cht") -> "简体中文"
+                        p.contains(".cht.") || p.endsWith(".cht.srt") || p.contains("cht") || p.contains("tc") -> "繁体中文"
+                        p.contains("eng") || p.contains("en") -> "英语"
                         else -> null
                     }
                 }
 
                 val allowed = detail.urls.filter { SubtitleMime.fromUrl(it) != null }
+                android.util.Log.d("VideoPlayer", "ASSRT allowedUrls=${allowed.size}")
                 val labelToUrl = linkedMapOf<String, String>()
+                var fallbackIdx = 0
                 for (u in allowed) {
-                    val lbl = labelOfUrl(u) ?: continue
-                    if (!labelToUrl.containsKey(lbl)) labelToUrl[lbl] = u
+                    val inferred = labelOfUrl(u)
+                    val lbl = inferred ?: detail.labels.getOrNull(fallbackIdx) ?: "未知"
+                    if (!labelToUrl.containsKey(lbl)) {
+                        labelToUrl[lbl] = u
+                        if (inferred == null) fallbackIdx++
+                    }
                 }
 
                 // 确定默认选择
