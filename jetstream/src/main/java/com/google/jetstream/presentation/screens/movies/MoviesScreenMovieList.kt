@@ -22,10 +22,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.TextStyle
@@ -56,6 +59,8 @@ fun MoviesScreenMovieList(
     ),
     onMovieClick: (movie: Movie) -> Unit
 ) {
+    val (lazyRow, firstItem) = remember { FocusRequester.createRefs() }
+    
     Column(
         modifier = modifier
     ) {
@@ -74,25 +79,38 @@ fun MoviesScreenMovieList(
         ) { movieListTarget ->
             // ToDo: specify the pivot offset to 0.07f
             LazyRow(
-                modifier = Modifier.focusRestorer(),
+                modifier = Modifier
+                    .focusRequester(lazyRow)
+                    .focusRestorer {
+                        firstItem
+                    },
                 contentPadding = PaddingValues(start = startPadding, end = endPadding),
                 horizontalArrangement = Arrangement.spacedBy(20.dp)
             ) {
-                items(movieListTarget) { movie ->
-                MediaCard(
-                    imageUrl = movie.posterUri,
-                    title = movie.name,
-                    itemWidth = 180.dp,
-                    watchProgress = movie.watchProgress,
-                    currentPositionMs = movie.currentPositionMs,
-                    durationMs = movie.durationMs,
-                    contentDescription = StringConstants
-                        .Composable
-                        .ContentDescription
-                        .moviePoster(movie.name),
-                    onClick = { onMovieClick(movie) }
-                )
-            }
+                itemsIndexed(movieListTarget, key = { _, movie -> movie.id }) { index, movie ->
+                    val itemModifier = if (index == 0) {
+                        Modifier.focusRequester(firstItem)
+                    } else {
+                        Modifier
+                    }
+                    MediaCard(
+                        modifier = itemModifier,
+                        imageUrl = movie.posterUri,
+                        title = movie.name,
+                        itemWidth = 180.dp,
+                        watchProgress = movie.watchProgress,
+                        currentPositionMs = movie.currentPositionMs,
+                        durationMs = movie.durationMs,
+                        contentDescription = StringConstants
+                            .Composable
+                            .ContentDescription
+                            .moviePoster(movie.name),
+                        onClick = { 
+                            lazyRow.saveFocusedChild()
+                            onMovieClick(movie) 
+                        }
+                    )
+                }
             }
         }
     }

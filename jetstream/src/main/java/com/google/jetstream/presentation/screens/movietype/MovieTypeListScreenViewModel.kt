@@ -23,7 +23,9 @@ import com.google.jetstream.data.repositories.ScrapedMoviesStore
 import com.google.jetstream.data.repositories.ScrapedTvStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -36,6 +38,14 @@ class MovieTypeListScreenViewModel @Inject constructor(
     scrapedMoviesStore: ScrapedMoviesStore,
     scrapedTvStore: ScrapedTvStore
 ) : ViewModel() {
+
+    // 保存上次聚焦的项索引
+    private val _lastFocusedItemIndex = MutableStateFlow(0)
+    val lastFocusedItemIndex: StateFlow<Int> = _lastFocusedItemIndex
+    
+    fun updateLastFocusedItemIndex(index: Int) {
+        _lastFocusedItemIndex.value = index
+    }
 
     val uiState = savedStateHandle.getStateFlow<String?>(
         MovieTypeListScreen.MovieTypeKey,

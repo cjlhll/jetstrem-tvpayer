@@ -17,6 +17,7 @@
 package com.google.jetstream.presentation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -74,6 +75,13 @@ fun App(
                     }
                 )
             ) {
+                // 使用 DisposableEffect 监听 MovieTypeListScreen 的显示，每次返回时触发焦点恢复
+                var triggerFocusRestore by remember { mutableStateOf(0) }
+                DisposableEffect(Unit) {
+                    triggerFocusRestore++
+                    onDispose { }
+                }
+                
                 MovieTypeListScreen(
                     onBackPressed = {
                         if (navController.navigateUp()) {
@@ -84,7 +92,8 @@ fun App(
                         navController.navigate(
                             Screens.MovieDetails.withArgs(movie.id)
                         )
-                    }
+                    },
+                    focusRestoreTrigger = triggerFocusRestore
                 )
             }
             composable(

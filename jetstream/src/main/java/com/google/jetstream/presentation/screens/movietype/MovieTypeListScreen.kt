@@ -34,11 +34,17 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,7 +72,8 @@ object MovieTypeListScreen {
 fun MovieTypeListScreen(
     onBackPressed: () -> Unit,
     onMovieSelected: (Movie) -> Unit,
-    movieTypeListScreenViewModel: MovieTypeListScreenViewModel = hiltViewModel()
+    movieTypeListScreenViewModel: MovieTypeListScreenViewModel = hiltViewModel(),
+    focusRestoreTrigger: Int = 0
 ) {
     val uiState by movieTypeListScreenViewModel.uiState.collectAsStateWithLifecycle()
 
@@ -84,7 +91,9 @@ fun MovieTypeListScreen(
                 title = s.title,
                 movies = s.movies,
                 onBackPressed = onBackPressed,
-                onMovieSelected = onMovieSelected
+                onMovieSelected = onMovieSelected,
+                movieTypeListScreenViewModel = movieTypeListScreenViewModel,
+                focusRestoreTrigger = focusRestoreTrigger
             )
         }
     }
@@ -96,12 +105,33 @@ private fun MovieTypeDetails(
     movies: List<Movie>,
     onBackPressed: () -> Unit,
     onMovieSelected: (Movie) -> Unit,
+    movieTypeListScreenViewModel: MovieTypeListScreenViewModel,
+    focusRestoreTrigger: Int,
     modifier: Modifier = Modifier
 ) {
     val childPadding = rememberChildPadding()
-    val isFirstItemVisible = remember { mutableStateOf(true) }
+    // 使用 rememberSaveable 保存滚动状态，这样页面返回时会自动恢复到之前的位置
+    val gridState = rememberSaveable(saver = androidx.compose.foundation.lazy.grid.LazyGridState.Saver) {
+        androidx.compose.foundation.lazy.grid.LazyGridState()
+    }
+    val lastFocusedItemIndex by movieTypeListScreenViewModel.lastFocusedItemIndex.collectAsStateWithLifecycle()
+    
+    // 为每个项创建 FocusRequester
+    val focusRequesters = remember(movies.size) {
+        List(movies.size) { FocusRequester() }
+    }
 
     BackHandler(onBack = onBackPressed)
+    
+    // 焦点恢复逻辑 - 只需要请求焦点，不需要滚动（页面位置已自动恢复）
+    LaunchedEffect(focusRestoreTrigger) {
+        if (focusRestoreTrigger > 0 && movies.isNotEmpty()) {
+            kotlinx.coroutines.delay(200) // 等待网格渲染
+            val targetIndex = lastFocusedItemIndex.coerceIn(0, movies.size - 1)
+            // 直接请求焦点，页面位置已经通过 Saver 自动恢复
+            focusRequesters.getOrNull(targetIndex)?.requestFocus()
+        }
+    }
 
     Column(
         modifier = modifier,
@@ -119,6 +149,7 @@ private fun MovieTypeDetails(
         )
         LazyVerticalGrid(
             columns = GridCells.Fixed(6),
+            state = gridState,
             contentPadding = PaddingValues(
                 start = 24.dp,
                 end = 24.dp,
@@ -134,12 +165,16 @@ private fun MovieTypeDetails(
             ) { index, movie ->
                 MovieGridItem(
                     movie = movie,
-                    onMovieSelected = onMovieSelected,
-                    modifier = Modifier.then(
-                        if (index == 0)
-                            Modifier.focusOnInitialVisibility(isFirstItemVisible)
-                        else Modifier
-                    )
+                    onMovieSelected = { selectedMovie ->
+                        movieTypeListScreenViewModel.updateLastFocusedItemIndex(index)
+                        onMovieSelected(selectedMovie)
+                    },
+                    onFocusChanged = { isFocused ->
+                        if (isFocused) {
+                            movieTypeListScreenViewModel.updateLastFocusedItemIndex(index)
+                        }
+                    },
+                    modifier = Modifier.focusRequester(focusRequesters[index])
                 )
             }
         }
@@ -150,7 +185,8 @@ private fun MovieTypeDetails(
 private fun MovieGridItem(
     movie: Movie,
     onMovieSelected: (Movie) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onFocusChanged: (Boolean) -> Unit = {}
 ) {
     var isFocused by remember { mutableStateOf(false) }
 
@@ -163,7 +199,10 @@ private fun MovieGridItem(
             modifier = Modifier
                 .width(130.dp)
                 .aspectRatio(ItemDirection.Vertical.aspectRatio)
-                .onFocusChanged { isFocused = it.isFocused }
+                .onFocusChanged { 
+                    isFocused = it.isFocused
+                    onFocusChanged(it.isFocused)
+                }
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 PosterImage(movie = movie, modifier = Modifier.fillMaxSize())

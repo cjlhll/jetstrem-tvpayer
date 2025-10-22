@@ -116,14 +116,22 @@ fun DashboardScreen(
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val drawerFocusRequester = remember { FocusRequester() }
+    
+    // TopBar "我的"图标的 FocusRequester
+    val profileFocusRequester = TopBarFocusRequesters[0]
 
     var isTopBarVisible by remember { mutableStateOf(true) }
     var isTopBarFocused by remember { mutableStateOf(false) }
     
-    // 当抽屉打开时，请求焦点
+    // 当抽屉状态改变时，管理焦点
     LaunchedEffect(drawerState.isOpen) {
         if (drawerState.isOpen) {
+            // 抽屉打开时，请求焦点到抽屉
             drawerFocusRequester.requestFocus()
+        } else {
+            // 抽屉关闭时，将焦点恢复到"我的"图标
+            kotlinx.coroutines.delay(100)
+            profileFocusRequester.requestFocus()
         }
     }
 
@@ -227,12 +235,10 @@ fun DashboardScreen(
             label = "",
         )
 
+        // 不再自动聚焦到 TopBar，让焦点保持在内容区域
+        // 首页会自动将焦点设置到第一个内容项
         LaunchedEffect(Unit) {
-            if (!wasTopBarFocusRequestedBefore) {
-                val targetIndex = if (hasTabs) currentTopBarSelectedTabIndex + 1 else 0
-                TopBarFocusRequesters[targetIndex].requestFocus()
-                wasTopBarFocusRequestedBefore = true
-            }
+            wasTopBarFocusRequestedBefore = true
         }
 
         ModalNavigationDrawer(
@@ -340,6 +346,13 @@ private fun Body(
         startDestination = Screens.Home(),
     ) {
         composable(Screens.Home()) {
+            // 使用 DisposableEffect 监听 HomeScreen 的显示，每次返回时触发焦点恢复
+            var triggerFocusRestore by remember { mutableStateOf(0) }
+            DisposableEffect(Unit) {
+                triggerFocusRestore++
+                onDispose { }
+            }
+            
             HomeScreen(
                 onMovieClick = { selectedMovie ->
                     openMovieDetailsScreen(selectedMovie.id)
@@ -347,7 +360,8 @@ private fun Body(
                 goToVideoPlayer = openVideoPlayer,
                 onScroll = updateTopBarVisibility,
                 isTopBarVisible = isTopBarVisible,
-                onShowAllClick = openMovieTypeList
+                onShowAllClick = openMovieTypeList,
+                focusRestoreTrigger = triggerFocusRestore
             )
         }
     }

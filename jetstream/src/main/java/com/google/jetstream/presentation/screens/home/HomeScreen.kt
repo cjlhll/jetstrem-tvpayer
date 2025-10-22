@@ -24,13 +24,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -53,6 +57,7 @@ fun HomeScreen(
     isTopBarVisible: Boolean,
     onShowAllClick: (movieType: String) -> Unit,
     homeScreeViewModel: HomeScreeViewModel = hiltViewModel(),
+    focusRestoreTrigger: Int = 0
 ) {
     val uiState by homeScreeViewModel.uiState.collectAsStateWithLifecycle()
 
@@ -70,6 +75,7 @@ fun HomeScreen(
                 isTopBarVisible = isTopBarVisible,
                 onShowAllClick = onShowAllClick,
                 modifier = Modifier.fillMaxSize(),
+                focusRestoreTrigger = focusRestoreTrigger
             )
         }
 
@@ -91,9 +97,13 @@ private fun Catalog(
     onShowAllClick: (movieType: String) -> Unit,
     modifier: Modifier = Modifier,
     isTopBarVisible: Boolean = true,
+    focusRestoreTrigger: Int = 0
 ) {
 
-    val lazyListState = rememberLazyListState()
+    // 使用 rememberSaveable 保存滚动状态，这样页面返回时会自动恢复到之前的位置
+    val lazyListState = rememberSaveable(saver = androidx.compose.foundation.lazy.LazyListState.Saver) {
+        androidx.compose.foundation.lazy.LazyListState()
+    }
     val childPadding = rememberChildPadding()
     var immersiveListHasFocus by remember { mutableStateOf(false) }
 
@@ -115,6 +125,84 @@ private fun Catalog(
     val recentlyWatchedMovies by recentlyWatchedVm.recentlyWatchedMovies.collectAsStateWithLifecycle()
 
     val scraped by scrapedVm.movies.collectAsStateWithLifecycle()
+    
+    // 从 ViewModel 获取上次聚焦的区域
+    val homeViewModel: HomeScreeViewModel = hiltViewModel()
+    val lastFocusedSection by homeViewModel.lastFocusedSection.collectAsStateWithLifecycle()
+    
+    // 焦点管理 - 简化版本，依赖 focusRestorer() 自动恢复内部焦点
+    val recentlyWatchedFocusRequester = remember { FocusRequester() }
+    val moviesFocusRequester = remember { FocusRequester() }
+    val showsFocusRequester = remember { FocusRequester() }
+    
+    // 焦点恢复逻辑
+    LaunchedEffect(focusRestoreTrigger, recentlyWatchedMovies, scraped, scrapedTv) {
+        if (focusRestoreTrigger > 0) {
+            // 从其他页面返回时，等待滚动状态完全稳定
+            // 给 LazyListState 时间通过 Saver 恢复位置
+            kotlinx.coroutines.delay(100)
+            
+            // 等待滚动状态稳定
+            while (lazyListState.isScrollInProgress) {
+                kotlinx.coroutines.delay(50)
+            }
+            
+            // 额外延迟确保渲染完成
+            kotlinx.coroutines.delay(200)
+            
+            // 恢复焦点到上次的区域
+            val focusRestored = when (lastFocusedSection) {
+                1 -> if (recentlyWatchedMovies.isNotEmpty()) {
+                    recentlyWatchedFocusRequester.requestFocus()
+                    true
+                } else false
+                2 -> if (scraped.isNotEmpty() || trendingMovies.isNotEmpty()) {
+                    moviesFocusRequester.requestFocus()
+                    true
+                } else false
+                3 -> if (scrapedTv.isNotEmpty() || nowPlayingMovies.isNotEmpty()) {
+                    showsFocusRequester.requestFocus()
+                    true
+                } else false
+                else -> false
+            }
+            
+            // 如果无法恢复到上次位置，使用默认优先级
+            if (!focusRestored) {
+                when {
+                    recentlyWatchedMovies.isNotEmpty() -> {
+                        recentlyWatchedFocusRequester.requestFocus()
+                        homeViewModel.updateLastFocusedSection(1)
+                    }
+                    scraped.isNotEmpty() || trendingMovies.isNotEmpty() -> {
+                        moviesFocusRequester.requestFocus()
+                        homeViewModel.updateLastFocusedSection(2)
+                    }
+                    scrapedTv.isNotEmpty() || nowPlayingMovies.isNotEmpty() -> {
+                        showsFocusRequester.requestFocus()
+                        homeViewModel.updateLastFocusedSection(3)
+                    }
+                }
+            }
+        } else {
+            // 首次加载时设置初始焦点
+            kotlinx.coroutines.delay(200)
+            when {
+                recentlyWatchedMovies.isNotEmpty() -> {
+                    recentlyWatchedFocusRequester.requestFocus()
+                    homeViewModel.updateLastFocusedSection(1)
+                }
+                scraped.isNotEmpty() || trendingMovies.isNotEmpty() -> {
+                    moviesFocusRequester.requestFocus()
+                    homeViewModel.updateLastFocusedSection(2)
+                }
+                scrapedTv.isNotEmpty() || nowPlayingMovies.isNotEmpty() -> {
+                    showsFocusRequester.requestFocus()
+                    homeViewModel.updateLastFocusedSection(3)
+                }
+            }
+        }
+    }
 
     LaunchedEffect(shouldShowTopBar) {
         onScroll(shouldShowTopBar)
@@ -134,28 +222,64 @@ private fun Catalog(
                 MoviesScreenMovieList(
                     movieList = recentlyWatchedMovies,
                     title = "最近观看",
-                    onMovieClick = goToVideoPlayer // 直接跳转播放，不经过详情页
+                    onMovieClick = { movie ->
+                        homeViewModel.updateLastFocusedSection(1)
+                        goToVideoPlayer(movie)
+                    },
+                    modifier = Modifier
+                        .focusRequester(recentlyWatchedFocusRequester)
+                        .onFocusChanged { 
+                            if (it.hasFocus || it.isFocused) {
+                                homeViewModel.updateLastFocusedSection(1)
+                            }
+                        }
                 )
             }
         }
         item(contentType = "MoviesRow") {
             MoviesRow(
-                modifier = Modifier.padding(top = 16.dp),
+                modifier = Modifier
+                    .padding(top = 16.dp)
+                    .focusRequester(moviesFocusRequester)
+                    .onFocusChanged { 
+                        if (it.hasFocus || it.isFocused) {
+                            homeViewModel.updateLastFocusedSection(2)
+                        }
+                    },
                 movieList = if (scraped.isNotEmpty()) scraped else trendingMovies,
                 title = "电影",
                 showAllButton = true,
-                onMovieSelected = onMovieClick,
-                onShowAllClick = { onShowAllClick("movies") }
+                onMovieSelected = { movie ->
+                    homeViewModel.updateLastFocusedSection(2)
+                    onMovieClick(movie)
+                },
+                onShowAllClick = { 
+                    homeViewModel.updateLastFocusedSection(2)
+                    onShowAllClick("movies") 
+                }
             )
         }
         item(contentType = "MoviesRow") {
             MoviesRow(
-                modifier = Modifier.padding(top = 16.dp),
+                modifier = Modifier
+                    .padding(top = 16.dp)
+                    .focusRequester(showsFocusRequester)
+                    .onFocusChanged { 
+                        if (it.hasFocus || it.isFocused) {
+                            homeViewModel.updateLastFocusedSection(3)
+                        }
+                    },
                 movieList = if (scrapedTv.isNotEmpty()) scrapedTv else nowPlayingMovies,
                 title = StringConstants.Composable.HomeScreenNowPlayingMoviesTitle,
                 showAllButton = true,
-                onMovieSelected = onMovieClick,
-                onShowAllClick = { onShowAllClick("shows") }
+                onMovieSelected = { movie ->
+                    homeViewModel.updateLastFocusedSection(3)
+                    onMovieClick(movie)
+                },
+                onShowAllClick = { 
+                    homeViewModel.updateLastFocusedSection(3)
+                    onShowAllClick("shows") 
+                }
             )
         }
     }

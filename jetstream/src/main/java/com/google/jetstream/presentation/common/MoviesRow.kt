@@ -45,6 +45,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
@@ -111,7 +112,12 @@ fun MoviesRow(
                 )
                 if (showAllButton) {
                     Button(
-                        onClick = onShowAllClick
+                        onClick = onShowAllClick,
+                        modifier = Modifier.focusProperties {
+                            // 阻止左右导航，只允许上下导航到其他行
+                            left = FocusRequester.Cancel
+                            right = FocusRequester.Cancel
+                        }
                     ) {
                         Text("全部")
                     }

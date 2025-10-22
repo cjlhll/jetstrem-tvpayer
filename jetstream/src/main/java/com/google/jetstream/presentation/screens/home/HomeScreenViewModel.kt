@@ -22,6 +22,7 @@ import com.google.jetstream.data.entities.MovieList
 import com.google.jetstream.data.repositories.MovieRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -49,6 +50,14 @@ class HomeScreeViewModel @Inject constructor(movieRepository: MovieRepository) :
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = HomeScreenUiState.Loading
     )
+    
+    // 保存上次聚焦的区域：0=未设置, 1=最近观看, 2=电影, 3=电视剧
+    private val _lastFocusedSection = MutableStateFlow(0)
+    val lastFocusedSection: StateFlow<Int> = _lastFocusedSection
+    
+    fun updateLastFocusedSection(section: Int) {
+        _lastFocusedSection.value = section
+    }
 }
 
 sealed interface HomeScreenUiState {
