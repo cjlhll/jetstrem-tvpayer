@@ -78,6 +78,7 @@ fun DirectoryPickerDialog(
     onDirectorySaved: (String) -> Unit,
     onBackToServerList: () -> Unit,
     modifier: Modifier = Modifier,
+    initialPath: String = "",
     viewModel: WebDavBrowserViewModel = hiltViewModel()
 ) {
     if (!showDialog) return
@@ -88,9 +89,23 @@ fun DirectoryPickerDialog(
 
     val listState = rememberLazyListState()
     val focusRequester = remember { FocusRequester() }
+    
+    // 记录是否已经加载过初始路径
+    var hasLoadedInitialPath by remember(showDialog) { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
-        viewModel.loadDirectory()
+    // 当对话框显示时，加载初始路径
+    LaunchedEffect(showDialog, initialPath) {
+        if (showDialog && !hasLoadedInitialPath) {
+            viewModel.loadDirectory(initialPath)
+            hasLoadedInitialPath = true
+        }
+    }
+    
+    // 对话框关闭时重置状态
+    LaunchedEffect(showDialog) {
+        if (!showDialog) {
+            hasLoadedInitialPath = false
+        }
     }
 
     // 当目录内容变化时，聚焦到第一个项目
@@ -137,35 +152,21 @@ fun DirectoryPickerDialog(
                             text = "选择目录",
                             style = MaterialTheme.typography.headlineSmall
                         )
-                        if (breadcrumbs.isNotEmpty()) {
-                            Text(
-                                text = "当前路径: ${breadcrumbs.joinToString(" / ")}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
+                        Text(
+                            text = if (breadcrumbs.isEmpty()) {
+                                "当前路径: / (根目录)"
+                            } else {
+                                "当前路径: / ${breadcrumbs.joinToString(" / ")}"
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
-
-                // 导航按钮
-                if (breadcrumbs.isNotEmpty()) {
-                    Button(
-                        onClick = { viewModel.navigateUp() },
-                        modifier = Modifier.focusRequester(focusRequester)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack,
-                            contentDescription = null
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("返回上级")
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
 
                 // 目录内容
                 when (val result = directoryItems) {
@@ -232,6 +233,7 @@ fun DirectoryPickerDialog(
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 items(result.data.filter { it.isDirectory }) { item ->
+                                    val isFirstItem = result.data.filter { it.isDirectory }.indexOf(item) == 0
                                     ListItem(
                                         headlineContent = {
                                             Text(
@@ -255,7 +257,7 @@ fun DirectoryPickerDialog(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .then(
-                                                if (result.data.indexOf(item) == 0) {
+                                                if (isFirstItem) {
                                                     Modifier.focusRequester(focusRequester)
                                                 } else {
                                                     Modifier
@@ -286,9 +288,16 @@ fun DirectoryPickerDialog(
                 ) {
                     Button(
                         onClick = onDismiss,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        scale = androidx.tv.material3.ButtonDefaults.scale(focusedScale = 1f),
+                        contentPadding = androidx.tv.material3.ButtonDefaults.ContentPadding
                     ) {
-                        Text("取消")
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("取消")
+                        }
                     }
 
                     Button(
@@ -296,14 +305,16 @@ fun DirectoryPickerDialog(
                             onDirectorySaved(currentPath)
                             onDismiss()
                         },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        scale = androidx.tv.material3.ButtonDefaults.scale(focusedScale = 1f),
+                        contentPadding = androidx.tv.material3.ButtonDefaults.ContentPadding
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Save,
-                            contentDescription = null
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("保存当前目录")
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("保存当前目录")
+                        }
                     }
                 }
             }

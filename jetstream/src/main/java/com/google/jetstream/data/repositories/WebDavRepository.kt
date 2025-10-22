@@ -108,7 +108,8 @@ class WebDavRepository @Inject constructor(
             id = id,
             name = name,
             path = path,
-            serverName = serverName
+            serverName = serverName,
+            configId = webDavConfigId
         )
     }
 }

@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.google.jetstream.data.repositories.WebDavRepository
+import com.google.jetstream.presentation.screens.webdav.WebDavBrowserViewModel
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import androidx.tv.material3.Button
@@ -71,7 +72,8 @@ data class ResourceDirectory(
     val id: String,
     val name: String,
     val path: String,
-    val serverName: String
+    val serverName: String,
+    val configId: String = ""
 )
 
 /**
@@ -82,7 +84,8 @@ data class ResourceDirectory(
 fun WebDavBrowserSection(
     modifier: Modifier = Modifier,
     horizontalPadding: androidx.compose.ui.unit.Dp = 72.dp,
-    repository: WebDavRepository = hiltViewModel<WebDavBrowserViewModel>().repository
+    viewModel: WebDavBrowserViewModel = hiltViewModel(),
+    repository: WebDavRepository = viewModel.repository
 ) {
     val coroutineScope = rememberCoroutineScope()
     var showWebDavListDialog by remember { mutableStateOf(false) }
@@ -90,6 +93,8 @@ fun WebDavBrowserSection(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var selectedWebDavConfig by remember { mutableStateOf<WebDavConfig?>(null) }
     var selectedDirectoryForDelete by remember { mutableStateOf<ResourceDirectory?>(null) }
+    var editingDirectory by remember { mutableStateOf<ResourceDirectory?>(null) }
+    var isEditMode by remember { mutableStateOf(false) }
     var hasError by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
 
@@ -161,7 +166,13 @@ fun WebDavBrowserSection(
                 )
 
                 Button(
-                    onClick = { showWebDavListDialog = true }
+                    onClick = {
+                        // 清除编辑状态，进入新建模式
+                        editingDirectory = null
+                        isEditMode = false
+                        showWebDavListDialog = true
+                    },
+                    scale = androidx.tv.material3.ButtonDefaults.scale(focusedScale = 1f)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Add,
@@ -233,7 +244,43 @@ fun WebDavBrowserSection(
                         )
                     },
                     selected = false,
-                    onClick = { /* 可以添加点击查看目录内容的功能 */ },
+                    onClick = {
+                        // 点击时进入编辑模式，重新选择目录
+                        coroutineScope.launch {
+                            try {
+                                // 加载完整的配置（包括密码）
+                                val configEntity = repository.getWebDavConfigEntityById(directory.configId)
+                                if (configEntity != null) {
+                                    // 转换为 data 层的 WebDavConfig（包含密码）
+                                    val dataConfig = com.google.jetstream.data.webdav.WebDavConfig(
+                                        serverUrl = configEntity.serverUrl,
+                                        username = configEntity.username,
+                                        password = configEntity.password,
+                                        displayName = configEntity.displayName,
+                                        isEnabled = true
+                                    )
+                                    
+                                    // 设置到 WebDavService
+                                    viewModel.webDavService.setConfig(dataConfig)
+                                    
+                                    // 加载 presentation 层的配置用于显示
+                                    val presentationConfig = repository.getWebDavConfigById(directory.configId)
+                                    if (presentationConfig != null) {
+                                        editingDirectory = directory
+                                        selectedWebDavConfig = presentationConfig
+                                        isEditMode = true
+                                        showDirectoryPickerDialog = true
+                                    }
+                                } else {
+                                    hasError = true
+                                    errorMessage = "找不到对应的WebDAV配置"
+                                }
+                            } catch (e: Exception) {
+                                hasError = true
+                                errorMessage = "加载配置失败: ${e.message}"
+                            }
+                        }
+                    },
                     modifier = Modifier
                         .padding(top = 8.dp)
                         .onKeyEvent { keyEvent ->
@@ -264,8 +311,30 @@ fun WebDavBrowserSection(
         showDialog = showWebDavListDialog,
         onDismiss = { showWebDavListDialog = false },
         onConfigSelected = { config ->
-            selectedWebDavConfig = config
-            showDirectoryPickerDialog = true
+            // 设置配置到 webDavService
+            coroutineScope.launch {
+                try {
+                    val configEntity = repository.getWebDavConfigEntityById(config.id)
+                    if (configEntity != null) {
+                        val dataConfig = com.google.jetstream.data.webdav.WebDavConfig(
+                            serverUrl = configEntity.serverUrl,
+                            username = configEntity.username,
+                            password = configEntity.password,
+                            displayName = configEntity.displayName,
+                            isEnabled = true
+                        )
+                        viewModel.webDavService.setConfig(dataConfig)
+                        selectedWebDavConfig = config
+                        showDirectoryPickerDialog = true
+                    } else {
+                        hasError = true
+                        errorMessage = "找不到对应的WebDAV配置"
+                    }
+                } catch (e: Exception) {
+                    hasError = true
+                    errorMessage = "加载配置失败: ${e.message}"
+                }
+            }
         },
         webDavConfigs = webDavConfigs,
         onDeleteConfig = { configId ->
@@ -279,19 +348,27 @@ fun WebDavBrowserSection(
             }
         },
         repository = repository,
-        webDavService = hiltViewModel<WebDavBrowserViewModel>().webDavService
+        webDavService = viewModel.webDavService
     )
 
     // 目录选择弹窗
     DirectoryPickerDialog(
         showDialog = showDirectoryPickerDialog,
+        viewModel = viewModel,
+        initialPath = if (isEditMode && editingDirectory != null) editingDirectory!!.path else "",
         onDismiss = {
             showDirectoryPickerDialog = false
             selectedWebDavConfig = null
+            editingDirectory = null
+            isEditMode = false
         },
         onBackToServerList = {
             showDirectoryPickerDialog = false
-            showWebDavListDialog = true
+            if (!isEditMode) {
+                showWebDavListDialog = true
+            }
+            editingDirectory = null
+            isEditMode = false
         },
         onDirectorySaved = { path ->
             selectedWebDavConfig?.let { config ->
@@ -304,16 +381,32 @@ fun WebDavBrowserSection(
                     "${config.displayName} - ${folderName}"
                 }
 
-                val newDirectory = ResourceDirectory(
-                    id = "",
-                    name = directoryName,
-                    path = path,
-                    serverName = config.displayName
-                )
+                val directory = if (isEditMode && editingDirectory != null) {
+                    // 编辑模式：更新现有目录
+                    ResourceDirectory(
+                        id = editingDirectory!!.id,
+                        name = directoryName,
+                        path = path,
+                        serverName = config.displayName,
+                        configId = config.id
+                    )
+                } else {
+                    // 新建模式：创建新目录
+                    ResourceDirectory(
+                        id = "",
+                        name = directoryName,
+                        path = path,
+                        serverName = config.displayName,
+                        configId = config.id
+                    )
+                }
 
                 coroutineScope.launch {
                     try {
-                        repository.saveResourceDirectory(newDirectory, config.id, config.displayName)
+                        repository.saveResourceDirectory(directory, config.id, config.displayName)
+                        // 重置状态
+                        editingDirectory = null
+                        isEditMode = false
                     } catch (e: Exception) {
                         hasError = true
                         errorMessage = "保存资源目录失败: ${e.message}"
