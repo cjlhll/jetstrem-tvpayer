@@ -81,6 +81,7 @@ data class ResourceDirectory(
 @Composable
 fun WebDavBrowserSection(
     modifier: Modifier = Modifier,
+    horizontalPadding: androidx.compose.ui.unit.Dp = 72.dp,
     repository: WebDavRepository = hiltViewModel<WebDavBrowserViewModel>().repository
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -144,7 +145,7 @@ fun WebDavBrowserSection(
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 72.dp),
+            .padding(horizontal = horizontalPadding),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {

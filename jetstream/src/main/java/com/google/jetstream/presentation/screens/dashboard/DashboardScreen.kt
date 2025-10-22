@@ -19,13 +19,21 @@ package com.google.jetstream.presentation.screens.dashboard
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -35,13 +43,19 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DrawerDefaults
 import androidx.tv.material3.Button
 import androidx.tv.material3.Text
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -66,6 +80,7 @@ import com.google.jetstream.presentation.screens.Screens
 import com.google.jetstream.presentation.screens.home.HomeScreen
 import com.google.jetstream.presentation.screens.profile.ProfileScreen
 import com.google.jetstream.presentation.utils.Padding
+import kotlinx.coroutines.launch
 
 val ParentPadding = PaddingValues(vertical = 16.dp, horizontal = 58.dp)
 
@@ -96,9 +111,21 @@ fun DashboardScreen(
     val navController = rememberNavController()
     val dashboardViewModel: DashboardViewModel = androidx.hilt.navigation.compose.hiltViewModel()
     val isRefreshing by dashboardViewModel.isRefreshing.collectAsState(initial = false)
+    
+    // Drawer state
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    val drawerFocusRequester = remember { FocusRequester() }
 
     var isTopBarVisible by remember { mutableStateOf(true) }
     var isTopBarFocused by remember { mutableStateOf(false) }
+    
+    // 当抽屉打开时，请求焦点
+    LaunchedEffect(drawerState.isOpen) {
+        if (drawerState.isOpen) {
+            drawerFocusRequester.requestFocus()
+        }
+    }
 
     var showExitDialog by remember { mutableStateOf(false) }
 
@@ -151,12 +178,15 @@ fun DashboardScreen(
     }
 
     BackPressHandledArea(
-        // 1. On user's first back press, bring focus to the current selected tab, if TopBar is not
+        // 1. If drawer is open, close it
+        // 2. On user's first back press, bring focus to the current selected tab, if TopBar is not
         //    visible, first make it visible, then focus the selected tab
-        // 2. On second back press, bring focus back to the first displayed tab
-        // 3. On third back press, exit the app
+        // 3. On second back press, bring focus back to the first displayed tab
+        // 4. On third back press, exit the app
         onBackPressed = {
-            if (!isTopBarVisible) {
+            if (drawerState.isOpen) {
+                scope.launch { drawerState.close() }
+            } else if (!isTopBarVisible) {
                 isTopBarVisible = true
                 val targetIndex = if (hasTabs) currentTopBarSelectedTabIndex + 1 else 0
                 TopBarFocusRequesters[targetIndex].requestFocus()
@@ -205,48 +235,71 @@ fun DashboardScreen(
             }
         }
 
-        DashboardTopBar(
-            modifier = Modifier
-                .offset { IntOffset(x = 0, y = topBarYOffsetPx) }
-                .onSizeChanged { topBarHeightPx = it.height }
-                .onFocusChanged { isTopBarFocused = it.hasFocus }
-                .padding(
-                    horizontal = ParentPadding.calculateStartPadding(
-                        LocalLayoutDirection.current
-                    ) + 8.dp
-                )
-                .padding(
-                    top = ParentPadding.calculateTopPadding(),
-                    bottom = ParentPadding.calculateBottomPadding()
-                ),
-            selectedTabIndex = currentTopBarSelectedTabIndex,
-            onScreenSelection = { screen ->
-                val targetRoute = screen()
-                if (currentDestination != targetRoute) {
-                    navController.navigate(targetRoute) {
-                        popUpTo(navController.graph.startDestinationId) {
-                            saveState = true
-                        }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
+        ModalNavigationDrawer(
+            drawerState = drawerState,
+            drawerContent = {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(400.dp)
+                        .background(MaterialTheme.colorScheme.surface)
+                        .focusRequester(drawerFocusRequester)
+                ) {
+                    DrawerContent()
                 }
             },
-            onRefreshClick = { dashboardViewModel.refreshAndScrape() },
-            showRefresh = (currentDestination == Screens.Home()),
-            isRefreshing = isRefreshing
-        )
+            scrimColor = androidx.compose.material3.MaterialTheme.colorScheme.scrim.copy(alpha = 0.6f)
+        ) {
+            Box {
+                DashboardTopBar(
+                    modifier = Modifier
+                        .offset { IntOffset(x = 0, y = topBarYOffsetPx) }
+                        .onSizeChanged { topBarHeightPx = it.height }
+                        .onFocusChanged { isTopBarFocused = it.hasFocus }
+                        .padding(
+                            horizontal = ParentPadding.calculateStartPadding(
+                                LocalLayoutDirection.current
+                            ) + 8.dp
+                        )
+                        .padding(
+                            top = ParentPadding.calculateTopPadding(),
+                            bottom = ParentPadding.calculateBottomPadding()
+                        ),
+                    selectedTabIndex = currentTopBarSelectedTabIndex,
+                    onScreenSelection = { screen ->
+                        if (screen == Screens.Profile) {
+                            // Open drawer instead of navigating
+                            scope.launch { drawerState.open() }
+                        } else {
+                            val targetRoute = screen()
+                            if (currentDestination != targetRoute) {
+                                navController.navigate(targetRoute) {
+                                    popUpTo(navController.graph.startDestinationId) {
+                                        saveState = true
+                                    }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
+                            }
+                        }
+                    },
+                    onRefreshClick = { dashboardViewModel.refreshAndScrape() },
+                    showRefresh = (currentDestination == Screens.Home()),
+                    isRefreshing = isRefreshing
+                )
 
-        Body(
-            openCategoryMovieList = openCategoryMovieList,
-            openMovieDetailsScreen = openMovieDetailsScreen,
-            openVideoPlayer = openVideoPlayer,
-            openMovieTypeList = openMovieTypeList,
-            updateTopBarVisibility = { isTopBarVisible = it },
-            isTopBarVisible = isTopBarVisible,
-            navController = navController,
-            modifier = Modifier.offset(y = navHostTopPaddingDp),
-        )
+                Body(
+                    openCategoryMovieList = openCategoryMovieList,
+                    openMovieDetailsScreen = openMovieDetailsScreen,
+                    openVideoPlayer = openVideoPlayer,
+                    openMovieTypeList = openMovieTypeList,
+                    updateTopBarVisibility = { isTopBarVisible = it },
+                    isTopBarVisible = isTopBarVisible,
+                    navController = navController,
+                    modifier = Modifier.offset(y = navHostTopPaddingDp),
+                )
+            }
+        }
     }
 }
 
@@ -286,9 +339,6 @@ private fun Body(
         navController = navController,
         startDestination = Screens.Home(),
     ) {
-        composable(Screens.Profile()) {
-            ProfileScreen()
-        }
         composable(Screens.Home()) {
             HomeScreen(
                 onMovieClick = { selectedMovie ->
@@ -301,3 +351,22 @@ private fun Body(
             )
         }
     }
+
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+@Composable
+private fun DrawerContent() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surface)
+            .focusRestorer()
+    ) {
+        // WebDAV 浏览器内容 - 使用更小的 padding 适配抽屉
+        com.google.jetstream.presentation.screens.profile.WebDavBrowserSection(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = 16.dp),
+            horizontalPadding = 16.dp
+        )
+    }
+}
