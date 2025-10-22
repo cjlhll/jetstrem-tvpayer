@@ -26,7 +26,8 @@ data class TvSeason(
     val number: Int,
     val name: String,
     val episodeCount: Int,
-    val webDavPath: String = "" // WebDAV中该季的路径
+    val webDavPath: String = "", // WebDAV中该季的路径
+    val webDavConfigId: String = "" // WebDAV配置ID，用于在播放时设置正确的配置
 )
 
 data class MovieDetails(

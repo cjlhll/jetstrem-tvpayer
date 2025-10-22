@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Done
@@ -136,33 +138,39 @@ fun SubtitleDialog(
                     )
                 }
                 val items = listOf("关闭字幕") + languages
-                items.forEachIndexed { idx, label ->
-                    var isFocused by remember { mutableStateOf(false) }
-                    
-                    ListItem(
-                        selected = idx == selectedIndex,
-                        onClick = { onSelectIndex(idx) },
-                        modifier = Modifier.onFocusChanged { isFocused = it.isFocused },
-                        headlineContent = { 
-                            Text(
-                                text = label,
-                                color = if (isFocused) Color.Black else MaterialTheme.colorScheme.onSurface
-                            )
-                        },
-                        trailingContent = {
-                            if (idx == selectedIndex) {
-                                Icon(
-                                    imageVector = Icons.Default.Done, 
-                                    contentDescription = null,
-                                    tint = if (isFocused) Color.Black else MaterialTheme.colorScheme.onSurface
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(400.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    itemsIndexed(items) { idx, label ->
+                        var isFocused by remember { mutableStateOf(false) }
+                        ListItem(
+                            selected = idx == selectedIndex,
+                            onClick = { onSelectIndex(idx) },
+                            modifier = Modifier.onFocusChanged { isFocused = it.isFocused },
+                            headlineContent = {
+                                Text(
+                                    text = label,
+                                    color = if (isFocused) Color.Black else MaterialTheme.colorScheme.onSurface
                                 )
-                            }
-                        },
-                        colors = ListItemDefaults.colors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            focusedContainerColor = Color.White
+                            },
+                            trailingContent = {
+                                if (idx == selectedIndex) {
+                                    Icon(
+                                        imageVector = Icons.Default.Done,
+                                        contentDescription = null,
+                                        tint = if (isFocused) Color.Black else MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            },
+                            colors = ListItemDefaults.colors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                focusedContainerColor = Color.White
+                            )
                         )
-                    )
+                    }
                 }
 
                 // end of timing controls
@@ -189,13 +197,14 @@ fun AudioDialog(
         titleContentColor = MaterialTheme.colorScheme.onSurface,
         textContentColor = MaterialTheme.colorScheme.onSurface,
         text = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(400.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                options.forEachIndexed { idx, label ->
+                itemsIndexed(options) { idx, label ->
                     var isFocused by remember { mutableStateOf(false) }
-
                     ListItem(
                         selected = idx == selectedIndex,
                         onClick = { onSelectIndex(idx) },

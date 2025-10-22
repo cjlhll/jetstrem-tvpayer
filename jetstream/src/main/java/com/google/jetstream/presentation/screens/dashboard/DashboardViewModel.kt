@@ -129,8 +129,8 @@ class DashboardViewModel @Inject constructor(
                     val startPath = dir.path
                     val startNorm = startPath.trim('/').replace(Regex("/+"), "/")
                     Log.i(TAG, "开始扫描：${config.displayName} -> ${if (startNorm.isEmpty()) "/" else startNorm}")
-                    // 遍历收集电影与电视剧（去重递归）
-                    traverseAndScrape(startNorm, aggregated, aggregatedTv, visited)
+                    // 遍历收集电影与电视剧（去重递归），传入当前的WebDAV配置ID
+                    traverseAndScrape(startNorm, aggregated, aggregatedTv, visited, config.id)
                 }
                 // 去重并更新首页 Movies/TV 模块数据源，并持久化到数据库
                 val moviesDistinct = aggregated.distinctBy { it.id }
@@ -158,7 +158,7 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
-    private suspend fun traverseAndScrape(path: String, aggregatedMovies: MutableList<Movie>, aggregatedTv: MutableList<Movie>, visited: MutableSet<String>) {
+    private suspend fun traverseAndScrape(path: String, aggregatedMovies: MutableList<Movie>, aggregatedTv: MutableList<Movie>, visited: MutableSet<String>, currentWebDavConfigId: String) {
         val norm = path.trim('/').replace(Regex("/+"), "/")
         if (!visited.add(norm)) return
         when (val res = webDavService.listDirectory(path)) {
@@ -187,15 +187,15 @@ class DashboardViewModel @Inject constructor(
                         if (matched != null) break
                     }
                     matched?.let { m ->
-                        // 检测季结构
-                        val seasons = detectSeasonsInDirectory(path, folders, files)
+                        // 检测季结构，传入当前的WebDAV配置ID
+                        val seasons = detectSeasonsInDirectory(path, folders, files, currentWebDavConfigId)
                         val localEpisodeCount = if (seasons.isNotEmpty()) {
                             seasons.sumOf { it.episodeCount }
                         } else {
                             files.size
                         }
-                        // 获取完整的TMDB电视剧详情信息
-                        val tvWithDetails = createTvWithFullDetails(m, "", localEpisodeCount, seasons)
+                        // 获取完整的TMDB电视剧详情信息，同时传入WebDAV配置ID
+                        val tvWithDetails = createTvWithFullDetails(m, "", localEpisodeCount, seasons, currentWebDavConfigId)
                         aggregatedTv.add(tvWithDetails)
                         Log.i(TAG, "剧集目录匹配: $folderTitleRaw -> ${m.name ?: m.title} (${m.id})，库中${localEpisodeCount}集，${seasons.size}季")
                     }
@@ -222,8 +222,8 @@ class DashboardViewModel @Inject constructor(
                                 val fullUrl = if (base.isNotBlank()) "$base/$rel" else rel
                                 Log.i(TAG, "WebDAV 视频URL: $fullUrl")
                                 
-                                // 获取完整的TMDB详情信息
-                                val movieWithDetails = createMovieWithFullDetails(matched, fullUrl)
+                                // 获取完整的TMDB详情信息，同时传入WebDAV配置ID
+                                val movieWithDetails = createMovieWithFullDetails(matched, fullUrl, currentWebDavConfigId)
                                 aggregatedMovies.add(movieWithDetails)
                                 
                                 Log.i(TAG, "电影匹配: $q -> ${matched.title ?: matched.name} (${matched.id})")
@@ -240,7 +240,7 @@ class DashboardViewModel @Inject constructor(
                     val childName = dir.name.substringAfterLast('/').removeSuffix("/")
                     if (childName.isBlank() || childName == currName) continue // 过滤当前目录自身
                     val next = (if (path.isBlank()) childName else "$path/$childName").trim('/').replace(Regex("/+"), "/")
-                    traverseAndScrape(next, aggregatedMovies, aggregatedTv, visited)
+                    traverseAndScrape(next, aggregatedMovies, aggregatedTv, visited, currentWebDavConfigId)
                 }
             }
             is WebDavResult.Error -> Log.w(TAG, "列目录失败(${path}): ${res.message}")
@@ -335,7 +335,7 @@ class DashboardViewModel @Inject constructor(
     /**
      * 根据TMDB搜索结果创建包含完整详情的Movie对象
      */
-    private suspend fun createMovieWithFullDetails(searchItem: TmdbApi.SearchItem, videoUri: String): Movie {
+    private suspend fun createMovieWithFullDetails(searchItem: TmdbApi.SearchItem, videoUri: String, webDavConfigId: String): Movie {
         try {
             // 获取完整的TMDB详情信息
             val details = TmdbService.getMovieDetails(searchItem.id.toString())
@@ -375,6 +375,8 @@ class DashboardViewModel @Inject constructor(
                         similar.take(10)
                     )
                 )
+                // 添加WebDAV配置ID
+                put("webdav_config_id", JsonPrimitive(webDavConfigId))
             }
             
             return Movie(
@@ -406,7 +408,7 @@ class DashboardViewModel @Inject constructor(
     /**
      * 根据TMDB搜索结果创建包含完整详情的电视剧Movie对象
      */
-    private suspend fun createTvWithFullDetails(searchItem: TmdbApi.SearchItem, videoUri: String, localEpisodeCount: Int = 0, seasons: List<com.google.jetstream.data.entities.TvSeason> = emptyList()): Movie {
+    private suspend fun createTvWithFullDetails(searchItem: TmdbApi.SearchItem, videoUri: String, localEpisodeCount: Int = 0, seasons: List<com.google.jetstream.data.entities.TvSeason> = emptyList(), webDavConfigId: String): Movie {
         try {
             // 获取完整的TMDB电视剧详情信息
             val details = TmdbService.getTvDetails(searchItem.id.toString())
@@ -452,6 +454,8 @@ class DashboardViewModel @Inject constructor(
                 if (seasons.isNotEmpty()) {
                     put("available_seasons", Json.encodeToJsonElement(kotlinx.serialization.builtins.ListSerializer(com.google.jetstream.data.entities.TvSeason.serializer()), seasons))
                 }
+                // 添加WebDAV配置ID
+                put("webdav_config_id", JsonPrimitive(webDavConfigId))
             }
             
             return Movie(
@@ -513,6 +517,9 @@ class DashboardViewModel @Inject constructor(
                     val availableSeasons = detailsMap["available_seasons"]?.let { el ->
                         try { Json.decodeFromJsonElement(kotlinx.serialization.builtins.ListSerializer(com.google.jetstream.data.entities.TvSeason.serializer()), el) } catch (e: Exception) { emptyList() }
                     } ?: emptyList()
+                    val webDavConfigId = detailsMap["webdav_config_id"]?.let { el ->
+                        el.jsonPrimitive.contentOrNull
+                    }
                     
                     // 构建电视剧详情字段
                     val categories = tmdbTvDetails?.genres?.map { mapGenreToChinese(it.name) } ?: emptyList()
@@ -564,7 +571,8 @@ class DashboardViewModel @Inject constructor(
                         screenplay = screenplay,
                         music = music,
                         castAndCrew = if (castAndCrew.isNotEmpty()) Json.encodeToString(castAndCrew) else null,
-                        availableSeasons = if (availableSeasons.isNotEmpty()) Json.encodeToString(availableSeasons) else null
+                        availableSeasons = if (availableSeasons.isNotEmpty()) Json.encodeToString(availableSeasons) else null,
+                        webDavConfigId = webDavConfigId
                     )
                 } else {
                     // 处理电影详情
@@ -580,6 +588,9 @@ class DashboardViewModel @Inject constructor(
                     val similar = detailsMap["tmdb_similar"]?.let { el ->
                         try { Json.decodeFromJsonElement(ListSerializer(TmdbService.SimilarItem.serializer()), el) } catch (e: Exception) { emptyList() }
                     } ?: emptyList()
+                    val webDavConfigId = detailsMap["webdav_config_id"]?.let { el ->
+                        el.jsonPrimitive.contentOrNull
+                    }
                     
                     // 构建电影详情字段
                     val categories = tmdbDetails?.genres?.map { mapGenreToChinese(it.name) } ?: emptyList()
@@ -616,7 +627,8 @@ class DashboardViewModel @Inject constructor(
                         director = director,
                         screenplay = screenplay,
                         music = music,
-                        castAndCrew = if (castAndCrew.isNotEmpty()) Json.encodeToString(castAndCrew) else null
+                        castAndCrew = if (castAndCrew.isNotEmpty()) Json.encodeToString(castAndCrew) else null,
+                        webDavConfigId = webDavConfigId
                     )
                 }
             } else {
@@ -656,7 +668,8 @@ class DashboardViewModel @Inject constructor(
     private suspend fun detectSeasonsInDirectory(
         currentPath: String, 
         folders: List<com.thegrizzlylabs.sardineandroid.DavResource>, 
-        files: List<com.thegrizzlylabs.sardineandroid.DavResource>
+        files: List<com.thegrizzlylabs.sardineandroid.DavResource>,
+        webDavConfigId: String
     ): List<com.google.jetstream.data.entities.TvSeason> {
         val seasons = mutableListOf<com.google.jetstream.data.entities.TvSeason>()
         
@@ -676,13 +689,14 @@ class DashboardViewModel @Inject constructor(
                     val seasonPath = if (currentPath.isBlank()) folderName else "$currentPath/$folderName"
                     val episodeCount = countEpisodesInSeason(seasonPath)
                     
-                    // 记录详细的季信息，包括WebDAV路径
+                    // 记录详细的季信息，包括WebDAV路径和配置ID
                     seasons.add(
                         com.google.jetstream.data.entities.TvSeason(
                             number = seasonNumber,
                             name = formatSeasonName(seasonNumber),
                             episodeCount = episodeCount,
-                            webDavPath = seasonPath
+                            webDavPath = seasonPath,
+                            webDavConfigId = webDavConfigId
                         )
                     )
                     
@@ -698,7 +712,8 @@ class DashboardViewModel @Inject constructor(
                         number = 1,
                         name = "第1季",
                         episodeCount = episodeFiles.size,
-                        webDavPath = currentPath
+                        webDavPath = currentPath,
+                        webDavConfigId = webDavConfigId
                     )
                 )
                 

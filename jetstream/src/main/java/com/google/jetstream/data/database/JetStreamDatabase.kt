@@ -41,7 +41,7 @@ import com.google.jetstream.data.database.entities.EpisodesCacheEntity
         RecentlyWatchedEntity::class,
         EpisodesCacheEntity::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = false
 )
 abstract class JetStreamDatabase : RoomDatabase() {
@@ -193,13 +193,21 @@ abstract class JetStreamDatabase : RoomDatabase() {
             }
         }
         
+        private val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // 添加 webDavConfigId 字段到 scraped_items 表
+                // 这个字段用于记录电影或电视剧所在的WebDAV配置，以便在播放时设置正确的配置
+                database.execSQL("ALTER TABLE scraped_items ADD COLUMN webDavConfigId TEXT")
+            }
+        }
+        
         fun getDatabase(context: Context): JetStreamDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     JetStreamDatabase::class.java,
                     "jetstream_database"
-                ).addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+                ).addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance

@@ -24,6 +24,7 @@ data class ScrapedItemEntity(
     val screenplay: String? = null,
     val music: String? = null,
     val castAndCrew: String? = null, // JSON字符串存储演员列表
-    val availableSeasons: String? = null // JSON字符串存储季信息
+    val availableSeasons: String? = null, // JSON字符串存储季信息
+    val webDavConfigId: String? = null // WebDAV配置ID，用于在播放时设置正确的配置
 )
 

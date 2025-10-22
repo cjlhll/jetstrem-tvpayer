@@ -59,6 +59,7 @@ class MovieDetailsScreenViewModel @Inject constructor(
     private val recentlyWatchedRepository: RecentlyWatchedRepository,
     private val episodeMatchingService: com.google.jetstream.data.services.EpisodeMatchingService,
     private val tvPlaybackService: com.google.jetstream.data.services.TvPlaybackService,
+    private val webDavConfigDao: com.google.jetstream.data.database.dao.WebDavConfigDao,
 ) : ViewModel() {
     
     // 剧集列表状态
@@ -173,6 +174,12 @@ class MovieDetailsScreenViewModel @Inject constructor(
                 // 获取本地季信息
                 val localSeasons = getLocalSeasonsForTv(tvId)
                 
+                // 设置正确的WebDAV配置
+                val targetSeason = localSeasons.find { it.number == seasonNumber }
+                if (targetSeason != null && targetSeason.webDavConfigId.isNotBlank()) {
+                    setWebDavConfigById(targetSeason.webDavConfigId)
+                }
+                
                 // 使用EpisodeMatchingService获取过滤后的剧集列表
                 val filteredEpisodes = episodeMatchingService.getFilteredEpisodes(
                     tvId = tvId,
@@ -258,6 +265,31 @@ class MovieDetailsScreenViewModel @Inject constructor(
         } catch (e: Exception) {
             android.util.Log.w("MovieDetailsVM", "获取本地季信息失败: $tvId", e)
             emptyList()
+        }
+    }
+    
+    /**
+     * 根据配置ID设置WebDAV配置
+     */
+    private suspend fun setWebDavConfigById(configId: String) {
+        try {
+            val config = webDavConfigDao.getConfigById(configId)
+            if (config != null) {
+                webDavService.setConfig(
+                    com.google.jetstream.data.webdav.WebDavConfig(
+                        serverUrl = config.serverUrl,
+                        username = config.username,
+                        password = config.password,
+                        displayName = config.displayName,
+                        isEnabled = true
+                    )
+                )
+                android.util.Log.d("MovieDetailsVM", "设置WebDAV配置: ${config.displayName}")
+            } else {
+                android.util.Log.w("MovieDetailsVM", "WebDAV配置不存在: configId=$configId")
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("MovieDetailsVM", "设置WebDAV配置失败: configId=$configId", e)
         }
     }
     

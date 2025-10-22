@@ -16,7 +16,9 @@ import javax.inject.Singleton
 class TvPlaybackService @Inject constructor(
     private val recentlyWatchedDao: RecentlyWatchedDao,
     private val episodeMatchingService: EpisodeMatchingService,
-    private val scrapedItemDao: com.google.jetstream.data.database.dao.ScrapedItemDao
+    private val scrapedItemDao: com.google.jetstream.data.database.dao.ScrapedItemDao,
+    private val webDavConfigDao: com.google.jetstream.data.database.dao.WebDavConfigDao,
+    private val webDavService: com.google.jetstream.data.webdav.WebDavService
 ) {
     companion object {
         private const val TAG = "TvPlaybackService"
@@ -117,6 +119,12 @@ class TvPlaybackService @Inject constructor(
                 return null
             }
             
+            // 设置正确的WebDAV配置
+            val targetSeason = localSeasons.find { it.number == seasonNumber }
+            if (targetSeason != null && targetSeason.webDavConfigId.isNotBlank()) {
+                setWebDavConfigById(targetSeason.webDavConfigId)
+            }
+            
             // 获取指定季的剧集列表
             val episodes = episodeMatchingService.getFilteredEpisodes(
                 tvId = tvId,
@@ -164,6 +172,11 @@ class TvPlaybackService @Inject constructor(
             val sortedSeasons = localSeasons.sortedBy { it.number }
             
             for (season in sortedSeasons) {
+                // 设置正确的WebDAV配置
+                if (season.webDavConfigId.isNotBlank()) {
+                    setWebDavConfigById(season.webDavConfigId)
+                }
+                
                 val episodes = episodeMatchingService.getFilteredEpisodes(
                     tvId = tvId,
                     seasonNumber = season.number,
@@ -210,6 +223,31 @@ class TvPlaybackService @Inject constructor(
         } catch (e: Exception) {
             Log.e(TAG, "获取本地季信息失败: $tvId", e)
             emptyList()
+        }
+    }
+
+    /**
+     * 根据配置ID设置WebDAV配置
+     */
+    private suspend fun setWebDavConfigById(configId: String) {
+        try {
+            val config = webDavConfigDao.getConfigById(configId)
+            if (config != null) {
+                webDavService.setConfig(
+                    com.google.jetstream.data.webdav.WebDavConfig(
+                        serverUrl = config.serverUrl,
+                        username = config.username,
+                        password = config.password,
+                        displayName = config.displayName,
+                        isEnabled = true
+                    )
+                )
+                Log.d(TAG, "设置WebDAV配置: ${config.displayName}")
+            } else {
+                Log.w(TAG, "WebDAV配置不存在: configId=$configId")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "设置WebDAV配置失败: configId=$configId", e)
         }
     }
 
