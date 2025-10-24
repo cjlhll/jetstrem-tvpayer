@@ -251,6 +251,25 @@ fun DashboardScreen(
                         .fillMaxHeight()
                         .width(400.dp)
                         .background(MaterialTheme.colorScheme.surface)
+                        .onPreviewKeyEvent { keyEvent ->
+                            // 当drawer打开时，拦截左右键，防止焦点逃离drawer
+                            if (drawerState.isOpen && keyEvent.type == KeyEventType.KeyDown) {
+                                when (keyEvent.key) {
+                                    Key.DirectionLeft, Key.DirectionRight -> {
+                                        // 完全吸收左右键事件，不让焦点逃到外面
+                                        true
+                                    }
+                                    Key.Back -> {
+                                        // 按返回键关闭drawer
+                                        scope.launch { drawerState.close() }
+                                        true
+                                    }
+                                    else -> false
+                                }
+                            } else {
+                                false
+                            }
+                        }
                         .focusRequester(drawerFocusRequester)
                 ) {
                     DrawerContent()

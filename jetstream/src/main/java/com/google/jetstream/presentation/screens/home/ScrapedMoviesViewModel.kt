@@ -15,7 +15,8 @@ import javax.inject.Inject
 class ScrapedMoviesViewModel @Inject constructor(
     store: ScrapedMoviesStore
 ) : ViewModel() {
+    // 使用Eagerly立即加载，确保首页数据尽快可用
     val movies: StateFlow<List<Movie>> = store.movies
         .map { it }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 }

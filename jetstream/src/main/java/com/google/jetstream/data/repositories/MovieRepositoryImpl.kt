@@ -48,23 +48,23 @@ class MovieRepositoryImpl @Inject constructor(
 ) : MovieRepository {
 
     override fun getFeaturedMovies() = flow {
-        val list = movieDataSource.getFeaturedMovieList()
-        emit(list)
+        // 移除mock数据，返回空列表
+        emit(emptyList<com.google.jetstream.data.entities.Movie>())
     }
 
     override fun getTrendingMovies(): Flow<MovieList> = flow {
-        val list = movieDataSource.getTrendingMovieList()
-        emit(list)
+        // 移除mock数据，返回空列表
+        emit(emptyList<com.google.jetstream.data.entities.Movie>())
     }
 
     override fun getTop10Movies(): Flow<MovieList> = flow {
-        val list = movieDataSource.getTop10MovieList()
-        emit(list)
+        // 移除mock数据，返回空列表
+        emit(emptyList<com.google.jetstream.data.entities.Movie>())
     }
 
     override fun getNowPlayingMovies(): Flow<MovieList> = flow {
-        val list = movieDataSource.getNowPlayingMovieList()
-        emit(list)
+        // 移除mock数据，返回空列表
+        emit(emptyList<com.google.jetstream.data.entities.Movie>())
     }
 
     override fun getMovieCategories() = flow {
@@ -185,32 +185,32 @@ class MovieRepositoryImpl @Inject constructor(
     }
 
     override fun getMoviesWithLongThumbnail() = flow {
-        val list = movieDataSource.getMovieList(ThumbnailType.Long)
-        emit(list)
+        // 移除mock数据，返回空列表
+        emit(emptyList<com.google.jetstream.data.entities.Movie>())
     }
 
     override fun getMovies(): Flow<MovieList> = flow {
-        val list = movieDataSource.getMovieList()
-        emit(list)
+        // 移除mock数据，返回空列表
+        emit(emptyList<com.google.jetstream.data.entities.Movie>())
     }
 
     override fun getPopularFilmsThisWeek(): Flow<MovieList> = flow {
-        val list = movieDataSource.getPopularFilmThisWeek()
-        emit(list)
+        // 移除mock数据，返回空列表
+        emit(emptyList<com.google.jetstream.data.entities.Movie>())
     }
 
     override fun getTVShows(): Flow<MovieList> = flow {
-        val list = tvDataSource.getTvShowList()
-        emit(list)
+        // 移除mock数据，返回空列表
+        emit(emptyList<com.google.jetstream.data.entities.Movie>())
     }
 
     override fun getBingeWatchDramas(): Flow<MovieList> = flow {
-        val list = tvDataSource.getBingeWatchDramaList()
-        emit(list)
+        // 移除mock数据，返回空列表
+        emit(emptyList<com.google.jetstream.data.entities.Movie>())
     }
 
     override fun getFavouriteMovies(): Flow<MovieList> = flow {
-        val list = movieDataSource.getFavoriteMovieList()
-        emit(list)
+        // 移除mock数据，返回空列表
+        emit(emptyList<com.google.jetstream.data.entities.Movie>())
     }
 }

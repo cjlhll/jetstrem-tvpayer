@@ -135,62 +135,93 @@ private fun Catalog(
     val moviesFocusRequester = remember { FocusRequester() }
     val showsFocusRequester = remember { FocusRequester() }
     
-    // 焦点恢复逻辑 - 使用最小延迟确保组件已绑定
-    LaunchedEffect(focusRestoreTrigger, recentlyWatchedMovies, scraped, scrapedTv) {
-        // 等待一帧确保 FocusRequester 已绑定到组件
-        // 使用 50ms 作为平衡：足够让组件准备好，又不会让用户感觉到延迟
-        kotlinx.coroutines.delay(50)
+    // 跟踪焦点是否已经分配过（避免重复分配）
+    var focusAllocated by rememberSaveable { mutableStateOf(false) }
+    
+    // 统一的焦点管理逻辑
+    LaunchedEffect(
+        focusRestoreTrigger,
+        recentlyWatchedMovies,
+        scraped,
+        trendingMovies,
+        scrapedTv,
+        nowPlayingMovies
+    ) {
+        // 等待组件完全渲染：LazyColumn + LazyRow + Items + FocusRequester 绑定
+        kotlinx.coroutines.delay(200)
         
         if (focusRestoreTrigger > 0) {
-            // 从其他页面返回时：恢复焦点到上次的区域
-            val focusRestored = when (lastFocusedSection) {
-                1 -> if (recentlyWatchedMovies.isNotEmpty()) {
-                    recentlyWatchedFocusRequester.requestFocus()
-                    true
-                } else false
-                2 -> if (scraped.isNotEmpty() || trendingMovies.isNotEmpty()) {
-                    moviesFocusRequester.requestFocus()
-                    true
-                } else false
-                3 -> if (scrapedTv.isNotEmpty() || nowPlayingMovies.isNotEmpty()) {
-                    showsFocusRequester.requestFocus()
-                    true
-                } else false
-                else -> false
+            // === 场景1：从其他页面返回，恢复焦点 ===
+            // 优先恢复到上次的区域（即使没有数据也恢复，因为有空状态组件）
+            val focusRestored = try {
+                when (lastFocusedSection) {
+                    1 -> {
+                        recentlyWatchedFocusRequester.requestFocus()
+                        true
+                    }
+                    2 -> {
+                        moviesFocusRequester.requestFocus()
+                        true
+                    }
+                    3 -> {
+                        showsFocusRequester.requestFocus()
+                        true
+                    }
+                    else -> false
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("HomeScreen", "Focus restore failed", e)
+                false
             }
             
-            // 如果无法恢复到上次位置，使用默认优先级
+            // 如果无法恢复，使用默认优先级
             if (!focusRestored) {
+                try {
+                    recentlyWatchedFocusRequester.requestFocus()
+                    homeViewModel.updateLastFocusedSection(1)
+                    android.util.Log.d("HomeScreen", "返回恢复焦点失败，使用默认：最近观看")
+                } catch (e: Exception) {
+                    android.util.Log.e("HomeScreen", "默认焦点分配失败", e)
+                }
+            }
+        } else if (!focusAllocated) {
+            // === 场景2：首次进入应用，按优先级分配焦点 ===
+            // 优先级：有数据的最近观看 > 有数据的电影 > 有数据的电视剧 > 最近观看（空状态）
+            val focusAssigned = try {
                 when {
                     recentlyWatchedMovies.isNotEmpty() -> {
                         recentlyWatchedFocusRequester.requestFocus()
                         homeViewModel.updateLastFocusedSection(1)
+                        android.util.Log.d("HomeScreen", "首次焦点分配：最近观看（有数据）")
+                        true
                     }
                     scraped.isNotEmpty() || trendingMovies.isNotEmpty() -> {
                         moviesFocusRequester.requestFocus()
                         homeViewModel.updateLastFocusedSection(2)
+                        android.util.Log.d("HomeScreen", "首次焦点分配：电影（有数据）")
+                        true
                     }
                     scrapedTv.isNotEmpty() || nowPlayingMovies.isNotEmpty() -> {
                         showsFocusRequester.requestFocus()
                         homeViewModel.updateLastFocusedSection(3)
+                        android.util.Log.d("HomeScreen", "首次焦点分配：电视剧（有数据）")
+                        true
+                    }
+                    else -> {
+                        // 所有模块都没有数据，默认焦点到最近观看的空状态
+                        recentlyWatchedFocusRequester.requestFocus()
+                        homeViewModel.updateLastFocusedSection(1)
+                        android.util.Log.d("HomeScreen", "首次焦点分配：最近观看（空状态）")
+                        true
                     }
                 }
+            } catch (e: Exception) {
+                android.util.Log.e("HomeScreen", "焦点分配失败", e)
+                false
             }
-        } else {
-            // 首次加载时：等待数据加载和渲染完成
-            when {
-                recentlyWatchedMovies.isNotEmpty() -> {
-                    recentlyWatchedFocusRequester.requestFocus()
-                    homeViewModel.updateLastFocusedSection(1)
-                }
-                scraped.isNotEmpty() || trendingMovies.isNotEmpty() -> {
-                    moviesFocusRequester.requestFocus()
-                    homeViewModel.updateLastFocusedSection(2)
-                }
-                scrapedTv.isNotEmpty() || nowPlayingMovies.isNotEmpty() -> {
-                    showsFocusRequester.requestFocus()
-                    homeViewModel.updateLastFocusedSection(3)
-                }
+            
+            if (focusAssigned) {
+                focusAllocated = true
             }
         }
     }
@@ -207,9 +238,9 @@ private fun Catalog(
         modifier = modifier,
     ) {
 
-        // 只有当有最近观看记录时才显示最近观看部分
-        if (recentlyWatchedMovies.isNotEmpty()) {
-            item(contentType = "MoviesScreenMovieList") {
+        // === 最近观看模块 ===
+        item(contentType = "RecentlyWatched") {
+            if (recentlyWatchedMovies.isNotEmpty()) {
                 MoviesScreenMovieList(
                     movieList = recentlyWatchedMovies,
                     title = "最近观看",
@@ -225,53 +256,82 @@ private fun Catalog(
                             }
                         }
                 )
+            } else {
+                com.google.jetstream.presentation.common.EmptySection(
+                    title = "最近观看",
+                    modifier = Modifier.focusRequester(recentlyWatchedFocusRequester)
+                )
             }
         }
-        item(contentType = "MoviesRow") {
-            MoviesRow(
-                modifier = Modifier
-                    .padding(top = 16.dp)
-                    .focusRequester(moviesFocusRequester)
-                    .onFocusChanged { 
-                        if (it.hasFocus || it.isFocused) {
-                            homeViewModel.updateLastFocusedSection(2)
-                        }
+        
+        // === 电影模块 ===
+        item(contentType = "Movies") {
+            val movieList = if (scraped.isNotEmpty()) scraped else trendingMovies
+            if (movieList.isNotEmpty()) {
+                MoviesRow(
+                    modifier = Modifier
+                        .padding(top = 16.dp)
+                        .focusRequester(moviesFocusRequester)
+                        .onFocusChanged { 
+                            if (it.hasFocus || it.isFocused) {
+                                homeViewModel.updateLastFocusedSection(2)
+                            }
+                        },
+                    movieList = movieList,
+                    title = "电影",
+                    showAllButton = true,
+                    onMovieSelected = { movie ->
+                        homeViewModel.updateLastFocusedSection(2)
+                        onMovieClick(movie)
                     },
-                movieList = if (scraped.isNotEmpty()) scraped else trendingMovies,
-                title = "电影",
-                showAllButton = true,
-                onMovieSelected = { movie ->
-                    homeViewModel.updateLastFocusedSection(2)
-                    onMovieClick(movie)
-                },
-                onShowAllClick = { 
-                    homeViewModel.updateLastFocusedSection(2)
-                    onShowAllClick("movies") 
-                }
-            )
+                    onShowAllClick = { 
+                        homeViewModel.updateLastFocusedSection(2)
+                        onShowAllClick("movies") 
+                    }
+                )
+            } else {
+                com.google.jetstream.presentation.common.EmptySection(
+                    title = "电影",
+                    modifier = Modifier
+                        .padding(top = 16.dp)
+                        .focusRequester(moviesFocusRequester)
+                )
+            }
         }
-        item(contentType = "MoviesRow") {
-            MoviesRow(
-                modifier = Modifier
-                    .padding(top = 16.dp)
-                    .focusRequester(showsFocusRequester)
-                    .onFocusChanged { 
-                        if (it.hasFocus || it.isFocused) {
-                            homeViewModel.updateLastFocusedSection(3)
-                        }
+        
+        // === 电视剧模块 ===
+        item(contentType = "TVShows") {
+            val tvList = if (scrapedTv.isNotEmpty()) scrapedTv else nowPlayingMovies
+            if (tvList.isNotEmpty()) {
+                MoviesRow(
+                    modifier = Modifier
+                        .padding(top = 16.dp)
+                        .focusRequester(showsFocusRequester)
+                        .onFocusChanged { 
+                            if (it.hasFocus || it.isFocused) {
+                                homeViewModel.updateLastFocusedSection(3)
+                            }
+                        },
+                    movieList = tvList,
+                    title = StringConstants.Composable.HomeScreenNowPlayingMoviesTitle,
+                    showAllButton = true,
+                    onMovieSelected = { movie ->
+                        homeViewModel.updateLastFocusedSection(3)
+                        onMovieClick(movie)
                     },
-                movieList = if (scrapedTv.isNotEmpty()) scrapedTv else nowPlayingMovies,
-                title = StringConstants.Composable.HomeScreenNowPlayingMoviesTitle,
-                showAllButton = true,
-                onMovieSelected = { movie ->
-                    homeViewModel.updateLastFocusedSection(3)
-                    onMovieClick(movie)
-                },
-                onShowAllClick = { 
-                    homeViewModel.updateLastFocusedSection(3)
-                    onShowAllClick("shows") 
-                }
-            )
+                    onShowAllClick = { 
+                        homeViewModel.updateLastFocusedSection(3)
+                        onShowAllClick("shows") 
+                    }
+                )
+            } else {
+                com.google.jetstream.presentation.common.EmptySection(
+                    title = StringConstants.Composable.HomeScreenNowPlayingMoviesTitle,
+                    modifier = Modifier
+                        .padding(top = 16.dp)
+                        .focusRequester(showsFocusRequester)
+                )
+            }
         }
     }
 }

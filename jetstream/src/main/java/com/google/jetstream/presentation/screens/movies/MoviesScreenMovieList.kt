@@ -97,7 +97,7 @@ fun MoviesScreenMovieList(
                         modifier = itemModifier,
                         imageUrl = movie.posterUri,
                         title = movie.name,
-                        itemWidth = 180.dp,
+                        itemWidth = 200.dp,
                         watchProgress = movie.watchProgress,
                         currentPositionMs = movie.currentPositionMs,
                         durationMs = movie.durationMs,

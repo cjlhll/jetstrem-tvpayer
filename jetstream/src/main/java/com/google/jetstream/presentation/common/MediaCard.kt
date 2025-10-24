@@ -28,7 +28,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -186,14 +185,26 @@ fun MediaCard(
                             
                             // 进度条在下方（仅当有观看进度时显示）
                             watchProgress?.let { progress ->
-                                LinearProgressIndicator(
-                                    progress = { progress },
+                                // 自定义进度条，两端带圆角
+                                Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(3.dp),
-                                    color = Color.White,
-                                    trackColor = Color.Gray.copy(alpha = 0.4f)
-                                )
+                                        .height(3.dp)
+                                        .background(
+                                            color = Color.Gray.copy(alpha = 0.4f),
+                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(1.5.dp)
+                                        )
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth(progress.coerceIn(0f, 1f))
+                                            .height(3.dp)
+                                            .background(
+                                                color = Color.White,
+                                                shape = androidx.compose.foundation.shape.RoundedCornerShape(1.5.dp)
+                                            )
+                                    )
+                                }
                             }
                         }
                     }
