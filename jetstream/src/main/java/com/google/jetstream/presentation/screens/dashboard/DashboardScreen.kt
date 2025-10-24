@@ -272,7 +272,7 @@ fun DashboardScreen(
                         }
                         .focusRequester(drawerFocusRequester)
                 ) {
-                    DrawerContent()
+                    DrawerContent(dashboardViewModel)
                 }
             },
             scrimColor = androidx.compose.material3.MaterialTheme.colorScheme.scrim.copy(alpha = 0.6f)
@@ -389,7 +389,7 @@ private fun Body(
 
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
-private fun DrawerContent() {
+private fun DrawerContent(dashboardViewModel: DashboardViewModel) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -401,7 +401,11 @@ private fun DrawerContent() {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(top = 16.dp),
-            horizontalPadding = 16.dp
+            horizontalPadding = 16.dp,
+            onDirectoryDeleted = {
+                // 删除资源目录后刷新首页数据
+                dashboardViewModel.refreshAndScrape()
+            }
         )
     }
 }

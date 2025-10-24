@@ -122,4 +122,11 @@ class RecentlyWatchedRepository @Inject constructor(
     fun getDao(): RecentlyWatchedDao {
         return recentlyWatchedDao
     }
+    
+    /**
+     * 清理不存在于刮削数据源中的最近观看记录
+     */
+    suspend fun cleanOrphanedRecords() {
+        recentlyWatchedDao.deleteOrphanedRecords()
+    }
 }

@@ -51,6 +51,7 @@ class DashboardViewModel @Inject constructor(
     private val scrapedTvStore: ScrapedTvStore,
     private val scrapedItemDao: ScrapedItemDao,
     private val episodesCacheDao: EpisodesCacheDao,
+    private val recentlyWatchedRepository: com.google.jetstream.data.repositories.RecentlyWatchedRepository,
 ) : ViewModel() {
 
     private val _isRefreshing = kotlinx.coroutines.flow.MutableStateFlow(false)
@@ -112,13 +113,35 @@ class DashboardViewModel @Inject constructor(
                     Log.e(TAG, "清除剧集缓存失败: ${e.message}", e)
                 }
                 
+                // 获取所有现有资源目录
+                val directories = resourceDirectoryDao.getAllDirectories().first()
+                
+                // 智能清理：清空将要刷新的配置的数据，确保数据完全一致
+                try {
+                    if (directories.isEmpty()) {
+                        // 如果没有任何资源目录，清空所有数据
+                        scrapedItemDao.clearAll()
+                        Log.i(TAG, "无资源目录，已清空所有刮削数据")
+                    } else {
+                        // 获取所有现存资源目录的webDavConfigId
+                        val existingConfigIds = directories.map { it.webDavConfigId }.distinct()
+                        // 先删除不在此列表中的数据（已删除的配置）
+                        scrapedItemDao.deleteByConfigIdsNotIn(existingConfigIds)
+                        // 再清空将要刷新的configId的所有数据，确保删除的资源目录的独有数据被清理
+                        scrapedItemDao.deleteByConfigIds(existingConfigIds)
+                        // 同时删除configId为null的旧数据
+                        scrapedItemDao.deleteWithNullConfigId()
+                        Log.i(TAG, "已清空待刷新配置的数据，将重新扫描: $existingConfigIds")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "清理刮削数据失败: ${e.message}", e)
+                }
+                
                 // 使用线程安全的集合
                 val aggregated = kotlinx.coroutines.sync.Mutex()
                 val aggregatedMovies = mutableListOf<Movie>()
                 val aggregatedTv = mutableListOf<Movie>()
                 val visited = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
-                
-                val directories = resourceDirectoryDao.getAllDirectories().first()
                 
                 // 并行处理所有目录
                 kotlinx.coroutines.coroutineScope {
@@ -179,6 +202,14 @@ class DashboardViewModel @Inject constructor(
                 }
                 scrapedItemDao.upsertAll(toEntities)
                 Log.i(TAG, "扫描完成并已入库：电影=${moviesDistinct.size}，电视剧=${tvDistinct.size}")
+                
+                // 清理不存在于刮削数据中的最近观看记录
+                try {
+                    recentlyWatchedRepository.cleanOrphanedRecords()
+                    Log.i(TAG, "已清理孤立的最近观看记录")
+                } catch (e: Exception) {
+                    Log.e(TAG, "清理最近观看记录失败: ${e.message}", e)
+                }
 
             } catch (e: Exception) {
                 val msg = e.localizedMessage ?: e.toString()

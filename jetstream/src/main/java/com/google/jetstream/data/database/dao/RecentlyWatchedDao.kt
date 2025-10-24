@@ -31,4 +31,8 @@ interface RecentlyWatchedDao {
     // 限制最近观看记录数量，删除最旧的记录
     @Query("DELETE FROM recently_watched WHERE movieId IN (SELECT movieId FROM recently_watched ORDER BY lastWatchedAt ASC LIMIT :deleteCount)")
     suspend fun deleteOldest(deleteCount: Int)
+    
+    // 清理不存在于刮削数据中的最近观看记录
+    @Query("DELETE FROM recently_watched WHERE movieId NOT IN (SELECT id FROM scraped_items)")
+    suspend fun deleteOrphanedRecords()
 }

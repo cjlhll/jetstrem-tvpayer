@@ -20,5 +20,21 @@ interface ScrapedItemDao {
 
     @Query("DELETE FROM scraped_items")
     suspend fun clearAll()
+    
+    // 删除不在指定webDavConfigId列表中的项
+    @Query("DELETE FROM scraped_items WHERE webDavConfigId NOT IN (:configIds)")
+    suspend fun deleteByConfigIdsNotIn(configIds: List<String>)
+    
+    // 删除webDavConfigId为null的项
+    @Query("DELETE FROM scraped_items WHERE webDavConfigId IS NULL")
+    suspend fun deleteWithNullConfigId()
+    
+    // 删除指定webDavConfigId的所有项
+    @Query("DELETE FROM scraped_items WHERE webDavConfigId = :configId")
+    suspend fun deleteByConfigId(configId: String)
+    
+    // 删除指定webDavConfigId列表的所有项
+    @Query("DELETE FROM scraped_items WHERE webDavConfigId IN (:configIds)")
+    suspend fun deleteByConfigIds(configIds: List<String>)
 }
 

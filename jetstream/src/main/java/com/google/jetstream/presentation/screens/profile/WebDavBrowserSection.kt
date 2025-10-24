@@ -85,7 +85,8 @@ fun WebDavBrowserSection(
     modifier: Modifier = Modifier,
     horizontalPadding: androidx.compose.ui.unit.Dp = 72.dp,
     viewModel: WebDavBrowserViewModel = hiltViewModel(),
-    repository: WebDavRepository = viewModel.repository
+    repository: WebDavRepository = viewModel.repository,
+    onDirectoryDeleted: (() -> Unit)? = null
 ) {
     val coroutineScope = rememberCoroutineScope()
     var showWebDavListDialog by remember { mutableStateOf(false) }
@@ -284,7 +285,8 @@ fun WebDavBrowserSection(
                     modifier = Modifier
                         .padding(top = 8.dp)
                         .onKeyEvent { keyEvent ->
-                            if (keyEvent.type == KeyEventType.KeyUp && keyEvent.key == Key.Menu) {
+                            if (keyEvent.type == KeyEventType.KeyUp && 
+                                (keyEvent.key == Key.Menu || keyEvent.key == Key.DirectionLeft)) {
                                 selectedDirectoryForDelete = directory
                                 showDeleteDialog = true
                                 true
@@ -436,13 +438,17 @@ fun WebDavBrowserSection(
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)
                     ) {
                         Button(
                             onClick = { showDeleteDialog = false },
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text("取消")
+                            Text(
+                                text = "取消",
+                                modifier = Modifier.fillMaxWidth(),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
                         }
                         Button(
                             onClick = {
@@ -450,6 +456,8 @@ fun WebDavBrowserSection(
                                     coroutineScope.launch {
                                         try {
                                             repository.deleteResourceDirectory(directory.id)
+                                            // 删除成功后触发刷新回调
+                                            onDirectoryDeleted?.invoke()
                                         } catch (e: Exception) {
                                             hasError = true
                                             errorMessage = "删除资源目录失败: ${e.message}"
@@ -461,7 +469,11 @@ fun WebDavBrowserSection(
                             },
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text("删除")
+                            Text(
+                                text = "确定",
+                                modifier = Modifier.fillMaxWidth(),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
                         }
                     }
                 }

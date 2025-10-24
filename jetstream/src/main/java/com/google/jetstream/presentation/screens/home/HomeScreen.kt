@@ -16,13 +16,24 @@
 
 package com.google.jetstream.presentation.screens.home
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.style.TextAlign
+import androidx.tv.material3.Icon
+import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -150,20 +161,30 @@ private fun Catalog(
         // 等待组件完全渲染：LazyColumn + LazyRow + Items + FocusRequester 绑定
         kotlinx.coroutines.delay(200)
         
+        // 如果所有模块都为空，不需要分配焦点
+        val movieList = if (scraped.isNotEmpty()) scraped else trendingMovies
+        val tvList = if (scrapedTv.isNotEmpty()) scrapedTv else nowPlayingMovies
+        val hasAnyContent = recentlyWatchedMovies.isNotEmpty() || movieList.isNotEmpty() || tvList.isNotEmpty()
+        
+        if (!hasAnyContent) {
+            android.util.Log.d("HomeScreen", "所有模块都为空，无需分配焦点")
+            return@LaunchedEffect
+        }
+        
         if (focusRestoreTrigger > 0) {
             // === 场景1：从其他页面返回，恢复焦点 ===
-            // 优先恢复到上次的区域（即使没有数据也恢复，因为有空状态组件）
+            // 只恢复到有数据的区域
             val focusRestored = try {
-                when (lastFocusedSection) {
-                    1 -> {
+                when {
+                    lastFocusedSection == 1 && recentlyWatchedMovies.isNotEmpty() -> {
                         recentlyWatchedFocusRequester.requestFocus()
                         true
                     }
-                    2 -> {
+                    lastFocusedSection == 2 && movieList.isNotEmpty() -> {
                         moviesFocusRequester.requestFocus()
                         true
                     }
-                    3 -> {
+                    lastFocusedSection == 3 && tvList.isNotEmpty() -> {
                         showsFocusRequester.requestFocus()
                         true
                     }
@@ -174,45 +195,56 @@ private fun Catalog(
                 false
             }
             
-            // 如果无法恢复，使用默认优先级
+            // 如果无法恢复，使用默认优先级（选择第一个有数据的模块）
             if (!focusRestored) {
                 try {
-                    recentlyWatchedFocusRequester.requestFocus()
-                    homeViewModel.updateLastFocusedSection(1)
-                    android.util.Log.d("HomeScreen", "返回恢复焦点失败，使用默认：最近观看")
+                    when {
+                        recentlyWatchedMovies.isNotEmpty() -> {
+                            recentlyWatchedFocusRequester.requestFocus()
+                            homeViewModel.updateLastFocusedSection(1)
+                            android.util.Log.d("HomeScreen", "返回恢复焦点失败，使用默认：最近观看")
+                        }
+                        movieList.isNotEmpty() -> {
+                            moviesFocusRequester.requestFocus()
+                            homeViewModel.updateLastFocusedSection(2)
+                            android.util.Log.d("HomeScreen", "返回恢复焦点失败，使用默认：电影")
+                        }
+                        tvList.isNotEmpty() -> {
+                            showsFocusRequester.requestFocus()
+                            homeViewModel.updateLastFocusedSection(3)
+                            android.util.Log.d("HomeScreen", "返回恢复焦点失败，使用默认：电视剧")
+                        }
+                    }
                 } catch (e: Exception) {
                     android.util.Log.e("HomeScreen", "默认焦点分配失败", e)
                 }
             }
         } else if (!focusAllocated) {
             // === 场景2：首次进入应用，按优先级分配焦点 ===
-            // 优先级：有数据的最近观看 > 有数据的电影 > 有数据的电视剧 > 最近观看（空状态）
+            // 优先级：有数据的最近观看 > 有数据的电影 > 有数据的电视剧
             val focusAssigned = try {
                 when {
                     recentlyWatchedMovies.isNotEmpty() -> {
                         recentlyWatchedFocusRequester.requestFocus()
                         homeViewModel.updateLastFocusedSection(1)
-                        android.util.Log.d("HomeScreen", "首次焦点分配：最近观看（有数据）")
+                        android.util.Log.d("HomeScreen", "首次焦点分配：最近观看")
                         true
                     }
-                    scraped.isNotEmpty() || trendingMovies.isNotEmpty() -> {
+                    movieList.isNotEmpty() -> {
                         moviesFocusRequester.requestFocus()
                         homeViewModel.updateLastFocusedSection(2)
-                        android.util.Log.d("HomeScreen", "首次焦点分配：电影（有数据）")
+                        android.util.Log.d("HomeScreen", "首次焦点分配：电影")
                         true
                     }
-                    scrapedTv.isNotEmpty() || nowPlayingMovies.isNotEmpty() -> {
+                    tvList.isNotEmpty() -> {
                         showsFocusRequester.requestFocus()
                         homeViewModel.updateLastFocusedSection(3)
-                        android.util.Log.d("HomeScreen", "首次焦点分配：电视剧（有数据）")
+                        android.util.Log.d("HomeScreen", "首次焦点分配：电视剧")
                         true
                     }
                     else -> {
-                        // 所有模块都没有数据，默认焦点到最近观看的空状态
-                        recentlyWatchedFocusRequester.requestFocus()
-                        homeViewModel.updateLastFocusedSection(1)
-                        android.util.Log.d("HomeScreen", "首次焦点分配：最近观看（空状态）")
-                        true
+                        android.util.Log.d("HomeScreen", "无可用内容，无法分配焦点")
+                        false
                     }
                 }
             } catch (e: Exception) {
@@ -230,107 +262,123 @@ private fun Catalog(
         onScroll(shouldShowTopBar)
     }
     
+    // 判断是否所有模块都为空
+    val movieList = if (scraped.isNotEmpty()) scraped else trendingMovies
+    val tvList = if (scrapedTv.isNotEmpty()) scrapedTv else nowPlayingMovies
+    val hasAnyContent = recentlyWatchedMovies.isNotEmpty() || movieList.isNotEmpty() || tvList.isNotEmpty()
+    
+    if (!hasAnyContent) {
+        // 所有模块都为空，显示全屏居中的空状态
+        Box(
+            modifier = modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.VideoLibrary,
+                    contentDescription = null,
+                    modifier = Modifier.size(64.dp),
+                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                )
+                Text(
+                    text = "暂无内容",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                    textAlign = TextAlign.Center
+                )
+                Text(
+                    text = "请在设置中配置WebDAV并刮削媒体库",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    } else {
+        // 至少有一个模块有内容，只显示有数据的模块
+        LazyColumn(
+            state = lazyListState,
+            contentPadding = PaddingValues(bottom = 108.dp),
+            // Setting overscan margin to bottom to ensure the last row's visibility
+            modifier = modifier,
+        ) {
 
-    LazyColumn(
-        state = lazyListState,
-        contentPadding = PaddingValues(bottom = 108.dp),
-        // Setting overscan margin to bottom to ensure the last row's visibility
-        modifier = modifier,
-    ) {
-
-        // === 最近观看模块 ===
-        item(contentType = "RecentlyWatched") {
+            // === 最近观看模块 ===
             if (recentlyWatchedMovies.isNotEmpty()) {
-                MoviesScreenMovieList(
-                    movieList = recentlyWatchedMovies,
-                    title = "最近观看",
-                    onMovieClick = { movie ->
-                        homeViewModel.updateLastFocusedSection(1)
-                        goToVideoPlayer(movie)
-                    },
-                    modifier = Modifier
-                        .focusRequester(recentlyWatchedFocusRequester)
-                        .onFocusChanged { 
-                            if (it.hasFocus || it.isFocused) {
-                                homeViewModel.updateLastFocusedSection(1)
+                item(contentType = "RecentlyWatched") {
+                    MoviesScreenMovieList(
+                        movieList = recentlyWatchedMovies,
+                        title = "最近观看",
+                        onMovieClick = { movie ->
+                            homeViewModel.updateLastFocusedSection(1)
+                            goToVideoPlayer(movie)
+                        },
+                        modifier = Modifier
+                            .focusRequester(recentlyWatchedFocusRequester)
+                            .onFocusChanged { 
+                                if (it.hasFocus || it.isFocused) {
+                                    homeViewModel.updateLastFocusedSection(1)
+                                }
                             }
-                        }
-                )
-            } else {
-                com.google.jetstream.presentation.common.EmptySection(
-                    title = "最近观看",
-                    modifier = Modifier.focusRequester(recentlyWatchedFocusRequester)
-                )
+                    )
+                }
             }
-        }
-        
-        // === 电影模块 ===
-        item(contentType = "Movies") {
-            val movieList = if (scraped.isNotEmpty()) scraped else trendingMovies
+            
+            // === 电影模块 ===
             if (movieList.isNotEmpty()) {
-                MoviesRow(
-                    modifier = Modifier
-                        .padding(top = 16.dp)
-                        .focusRequester(moviesFocusRequester)
-                        .onFocusChanged { 
-                            if (it.hasFocus || it.isFocused) {
-                                homeViewModel.updateLastFocusedSection(2)
-                            }
+                item(contentType = "Movies") {
+                    MoviesRow(
+                        modifier = Modifier
+                            .padding(top = 16.dp)
+                            .focusRequester(moviesFocusRequester)
+                            .onFocusChanged { 
+                                if (it.hasFocus || it.isFocused) {
+                                    homeViewModel.updateLastFocusedSection(2)
+                                }
+                            },
+                        movieList = movieList,
+                        title = "电影",
+                        showAllButton = true,
+                        onMovieSelected = { movie ->
+                            homeViewModel.updateLastFocusedSection(2)
+                            onMovieClick(movie)
                         },
-                    movieList = movieList,
-                    title = "电影",
-                    showAllButton = true,
-                    onMovieSelected = { movie ->
-                        homeViewModel.updateLastFocusedSection(2)
-                        onMovieClick(movie)
-                    },
-                    onShowAllClick = { 
-                        homeViewModel.updateLastFocusedSection(2)
-                        onShowAllClick("movies") 
-                    }
-                )
-            } else {
-                com.google.jetstream.presentation.common.EmptySection(
-                    title = "电影",
-                    modifier = Modifier
-                        .padding(top = 16.dp)
-                        .focusRequester(moviesFocusRequester)
-                )
+                        onShowAllClick = { 
+                            homeViewModel.updateLastFocusedSection(2)
+                            onShowAllClick("movies") 
+                        }
+                    )
+                }
             }
-        }
-        
-        // === 电视剧模块 ===
-        item(contentType = "TVShows") {
-            val tvList = if (scrapedTv.isNotEmpty()) scrapedTv else nowPlayingMovies
+            
+            // === 电视剧模块 ===
             if (tvList.isNotEmpty()) {
-                MoviesRow(
-                    modifier = Modifier
-                        .padding(top = 16.dp)
-                        .focusRequester(showsFocusRequester)
-                        .onFocusChanged { 
-                            if (it.hasFocus || it.isFocused) {
-                                homeViewModel.updateLastFocusedSection(3)
-                            }
+                item(contentType = "TVShows") {
+                    MoviesRow(
+                        modifier = Modifier
+                            .padding(top = 16.dp)
+                            .focusRequester(showsFocusRequester)
+                            .onFocusChanged { 
+                                if (it.hasFocus || it.isFocused) {
+                                    homeViewModel.updateLastFocusedSection(3)
+                                }
+                            },
+                        movieList = tvList,
+                        title = StringConstants.Composable.HomeScreenNowPlayingMoviesTitle,
+                        showAllButton = true,
+                        onMovieSelected = { movie ->
+                            homeViewModel.updateLastFocusedSection(3)
+                            onMovieClick(movie)
                         },
-                    movieList = tvList,
-                    title = StringConstants.Composable.HomeScreenNowPlayingMoviesTitle,
-                    showAllButton = true,
-                    onMovieSelected = { movie ->
-                        homeViewModel.updateLastFocusedSection(3)
-                        onMovieClick(movie)
-                    },
-                    onShowAllClick = { 
-                        homeViewModel.updateLastFocusedSection(3)
-                        onShowAllClick("shows") 
-                    }
-                )
-            } else {
-                com.google.jetstream.presentation.common.EmptySection(
-                    title = StringConstants.Composable.HomeScreenNowPlayingMoviesTitle,
-                    modifier = Modifier
-                        .padding(top = 16.dp)
-                        .focusRequester(showsFocusRequester)
-                )
+                        onShowAllClick = { 
+                            homeViewModel.updateLastFocusedSection(3)
+                            onShowAllClick("shows") 
+                        }
+                    )
+                }
             }
         }
     }
