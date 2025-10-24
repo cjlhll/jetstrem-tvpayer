@@ -16,6 +16,8 @@
 
 package com.google.jetstream.presentation.screens.videoPlayer.subtitle
 
+import android.content.Context
+import android.widget.Toast
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.State
 import com.google.jetstream.data.remote.AssrtService
@@ -25,7 +27,7 @@ import java.net.URL
 /**
  * 字幕管理器
  */
-class SubtitleManager {
+class SubtitleManager(private val context: Context? = null) {
     
     private val _currentSubtitle = mutableStateOf<SubtitleItem?>(null)
     val currentSubtitle: State<SubtitleItem?> = _currentSubtitle
@@ -252,6 +254,7 @@ class SubtitleManager {
         val name = movieName
         if (name.isNullOrBlank()) {
             android.util.Log.w("SubtitleManager", "电影名称为空，无法搜索字幕")
+            showToast("电影名称为空，无法搜索字幕")
             return false
         }
         
@@ -272,6 +275,7 @@ class SubtitleManager {
                 
                 if (result == null) {
                     android.util.Log.w("SubtitleManager", "未找到合适的字幕")
+                    showToast("未找到适合的字幕")
                     return@withContext false
                 }
                 
@@ -310,13 +314,35 @@ class SubtitleManager {
                     android.util.Log.d("SubtitleManager", "字幕: ${item.startTimeMs}ms - ${item.endTimeMs}ms: ${item.text.take(50)}")
                 }
                 
+                showToast("成功加载 ${subtitleItems.size} 条字幕")
                 return@withContext true
                 
+            } catch (e: java.net.SocketTimeoutException) {
+                android.util.Log.e("SubtitleManager", "搜索字幕超时", e)
+                showToast("字幕搜索超时，请检查网络连接")
+                return@withContext false
+            } catch (e: java.net.UnknownHostException) {
+                android.util.Log.e("SubtitleManager", "网络连接失败", e)
+                showToast("网络连接失败，无法搜索字幕")
+                return@withContext false
             } catch (e: Exception) {
                 android.util.Log.e("SubtitleManager", "自动搜索加载字幕失败", e)
+                showToast("字幕加载失败: ${e.message?.take(30) ?: "未知错误"}")
                 return@withContext false
             } finally {
                 _isLoading.value = false
+            }
+        }
+    }
+    
+    /**
+     * 显示 Toast 提示（在主线程）
+     */
+    private fun showToast(message: String) {
+        context?.let { ctx ->
+            // 确保在主线程显示 Toast
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                Toast.makeText(ctx, message, Toast.LENGTH_SHORT).show()
             }
         }
     }

@@ -157,7 +157,7 @@ fun VideoPlayerScreenContent(
     var savedPositionForCoreSwitch by remember { mutableStateOf(0L) }
     
     // 字幕管理器
-    val subtitleManager = remember { SubtitleManager() }
+    val subtitleManager = remember { SubtitleManager(context) }
     val currentSubtitle by subtitleManager.currentSubtitle
     val subtitleEnabled by subtitleManager.enabled
     val subtitleDelay by subtitleManager.delayMs
@@ -525,7 +525,7 @@ fun VideoPlayerScreenContent(
                 subtitle = currentSubtitle!!,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 120.dp)
+                    .padding(bottom = 18.dp)  // 更靠近底部
             )
         }
 

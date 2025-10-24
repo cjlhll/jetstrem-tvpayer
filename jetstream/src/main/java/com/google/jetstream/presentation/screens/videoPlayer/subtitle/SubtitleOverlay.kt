@@ -16,21 +16,25 @@
 
 package com.google.jetstream.presentation.screens.videoPlayer.subtitle
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalDensity
 
 /**
  * 字幕显示组件
+ * 使用行业标准样式：白色文字 + 黑色描边 + 阴影
  */
 @Composable
 fun SubtitleOverlay(
@@ -43,21 +47,51 @@ fun SubtitleOverlay(
             .padding(horizontal = 48.dp),
         contentAlignment = Alignment.Center
     ) {
-        // 字幕背景
-        Box(
-            modifier = Modifier
-                .background(
-                    color = Color.Black.copy(alpha = 0.75f),
-                    shape = RoundedCornerShape(8.dp)
+        // 使用多层文字模拟描边效果
+        // 底层：黑色描边（绘制多次形成描边）
+        val strokeWidth = 3.dp
+        val density = LocalDensity.current
+        val strokeWidthPx = with(density) { strokeWidth.toPx() }
+        
+        Box(contentAlignment = Alignment.Center) {
+            // 描边层（黑色，多个方向）
+            listOf(
+                Offset(-strokeWidthPx, -strokeWidthPx),
+                Offset(strokeWidthPx, -strokeWidthPx),
+                Offset(-strokeWidthPx, strokeWidthPx),
+                Offset(strokeWidthPx, strokeWidthPx),
+                Offset(0f, -strokeWidthPx),
+                Offset(0f, strokeWidthPx),
+                Offset(-strokeWidthPx, 0f),
+                Offset(strokeWidthPx, 0f)
+            ).forEach { offset ->
+                Text(
+                    text = subtitle.text,
+                    fontSize = 28.sp,
+                    color = Color.Black,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 36.sp,
+                    modifier = Modifier.offset(
+                        x = with(density) { offset.x.toDp() },
+                        y = with(density) { offset.y.toDp() }
+                    )
                 )
-                .padding(horizontal = 24.dp, vertical = 12.dp)
-        ) {
+            }
+            
+            // 主文字层（白色，带阴影）
             Text(
                 text = subtitle.text,
-                fontSize = 24.sp,
+                fontSize = 28.sp,
                 color = Color.White,
                 textAlign = TextAlign.Center,
-                lineHeight = 32.sp
+                lineHeight = 36.sp,
+                style = TextStyle(
+                    shadow = Shadow(
+                        color = Color.Black.copy(alpha = 0.8f),
+                        offset = Offset(2f, 2f),
+                        blurRadius = 4f
+                    )
+                )
             )
         }
     }
@@ -88,7 +122,7 @@ fun SubtitleSelectorDialog(
                 )
                 
                 if (availableSubtitles.isNotEmpty()) {
-                    Divider(modifier = Modifier.padding(vertical = 8.dp))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                     
                     Text(
                         text = "选择字幕轨道：",
