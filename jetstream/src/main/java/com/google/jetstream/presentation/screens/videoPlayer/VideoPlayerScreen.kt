@@ -279,6 +279,9 @@ fun VideoPlayerScreenContent(
     // 追踪是否正在快进（包括短按和长按），用于隐藏缓冲图标
     var isSeeking by remember { mutableStateOf(false) }
     var seekHideJob by remember { mutableStateOf<Job?>(null) }
+    // 进度条可见性单独管理，避免闪烁
+    var seekOverlayVisible by remember { mutableStateOf(false) }
+    var seekOverlayHideJob by remember { mutableStateOf<Job?>(null) }
 
     fun startHold(direction: Int) {
         if (holdSeekJob != null) return
@@ -286,6 +289,9 @@ fun VideoPlayerScreenContent(
         isHoldSeeking.value = true
         isSeeking = true
         seekHideJob?.cancel()
+        // 长按开始时立即显示进度条，并取消隐藏计时
+        seekOverlayVisible = true
+        seekOverlayHideJob?.cancel()
         holdSeekPreviewMs.longValue = exoPlayer.currentPosition
         val duration = exoPlayer.duration.coerceAtLeast(0L)
         android.util.Log.d("VideoPlayer", "开始长按快进/快退，方向: $direction, 当前位置: ${holdSeekPreviewMs.longValue}ms, 总时长: ${duration}ms")
@@ -321,6 +327,12 @@ fun VideoPlayerScreenContent(
         seekHideJob = coroutineScope.launch {
             delay(500)
             isSeeking = false
+        }
+        // 长按结束后延迟隐藏进度条，避免闪烁
+        seekOverlayHideJob?.cancel()
+        seekOverlayHideJob = coroutineScope.launch {
+            delay(1200)
+            seekOverlayVisible = false
         }
     }
 
@@ -450,12 +462,22 @@ fun VideoPlayerScreenContent(
                 exoPlayer,
                 onSeekStart = {
                     isSeeking = true
+                    // 短按开始显示进度条
+                    seekOverlayVisible = true
+                    seekOverlayHideJob?.cancel()
                     seekHideJob?.cancel()
                 },
                 onSeekEnd = {
+                    // 先在较短时间后关闭 seeking 状态，用于缓冲遮罩
                     seekHideJob = coroutineScope.launch {
                         delay(500)
                         isSeeking = false
+                    }
+                    // 进度条延迟更久再隐藏，保证视觉稳定
+                    seekOverlayHideJob?.cancel()
+                    seekOverlayHideJob = coroutineScope.launch {
+                        delay(1200)
+                        seekOverlayVisible = false
                     }
                 }
             )
@@ -557,13 +579,14 @@ fun VideoPlayerScreenContent(
             )
         }
 
-        // Hold-seek progress bar
-        if (isHoldSeeking.value) {
+        // Seek progress bar (long-press and short-press) with debounced visibility
+        if (seekOverlayVisible || isHoldSeeking.value) {
             val duration = exoPlayer.duration
-            android.util.Log.d("VideoPlayer", "显示长按进度条: 当前=${holdSeekPreviewMs.longValue}ms, 总=${duration}ms")
+            val currentMs = if (isHoldSeeking.value) holdSeekPreviewMs.longValue else exoPlayer.currentPosition
+            android.util.Log.d("VideoPlayer", "显示进度条: 当前=${currentMs}ms, 总=${duration}ms, hold=${isHoldSeeking.value}")
             HoldSeekProgressBar(
-                progress = if (duration > 0) holdSeekPreviewMs.longValue.toFloat() / duration.toFloat() else 0f,
-                currentPositionMs = holdSeekPreviewMs.longValue,
+                progress = if (duration > 0) currentMs.toFloat() / duration.toFloat() else 0f,
+                currentPositionMs = currentMs,
                 durationMs = duration,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
