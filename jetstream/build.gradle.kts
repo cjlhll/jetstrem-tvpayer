@@ -119,7 +119,7 @@ dependencies {
     implementation(libs.kotlinx.serialization)
 
     // OkHttp for ASSRT client
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp:5.0.0-alpha.14")
 
     // Media3
     implementation(libs.androidx.media3.exoplayer)
