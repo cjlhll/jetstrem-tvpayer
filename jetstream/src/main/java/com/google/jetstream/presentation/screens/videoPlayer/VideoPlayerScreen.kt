@@ -20,8 +20,12 @@ import android.view.KeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -34,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -172,6 +177,17 @@ fun VideoPlayerScreenContent(
     }
 
     var playerInitialized by remember { mutableStateOf(false) }
+    var isBuffering by remember { mutableStateOf(true) }
+    var bufferingProgress by remember { mutableStateOf(0) }
+
+    // 辅助函数：获取播放状态字符串
+    fun getStateString(state: Int): String = when (state) {
+        Player.STATE_IDLE -> "IDLE(空闲)"
+        Player.STATE_BUFFERING -> "BUFFERING(缓冲中)"
+        Player.STATE_READY -> "READY(就绪)"
+        Player.STATE_ENDED -> "ENDED(结束)"
+        else -> "UNKNOWN($state)"
+    }
 
     // 字幕管理器
     val subtitleManager = remember { SubtitleManager(context) }
@@ -201,16 +217,51 @@ fun VideoPlayerScreenContent(
         // 添加播放器监听器
         exoPlayer.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_READY && !playerInitialized) {
-                    playerInitialized = true
-                    onVideoStarted()
-                    android.util.Log.d("VideoPlayer", "Video prepared and ready")
-
-                    // 检测并设置内嵌字幕
-                    subtitleManager.detectEmbeddedSubtitles(exoPlayer)
+                android.util.Log.d("VideoPlayer", "播放状态变化: ${getStateString(playbackState)}")
+                
+                when (playbackState) {
+                    Player.STATE_BUFFERING -> {
+                        isBuffering = true
+                        android.util.Log.d("VideoPlayer", "缓冲中... 已缓冲: ${exoPlayer.bufferedPercentage}%")
+                    }
+                    Player.STATE_READY -> {
+                        isBuffering = false
+                        if (!playerInitialized) {
+                            playerInitialized = true
+                            onVideoStarted()
+                            android.util.Log.d("VideoPlayer", "Video prepared and ready")
+                            // 检测并设置内嵌字幕
+                            subtitleManager.detectEmbeddedSubtitles(exoPlayer)
+                        }
+                    }
+                    Player.STATE_ENDED -> {
+                        isBuffering = false
+                        android.util.Log.d("VideoPlayer", "播放结束")
+                    }
+                    Player.STATE_IDLE -> {
+                        android.util.Log.d("VideoPlayer", "播放器空闲")
+                    }
                 }
             }
+            
+            override fun onIsLoadingChanged(isLoading: Boolean) {
+                android.util.Log.d("VideoPlayer", "加载状态: $isLoading")
+            }
         })
+        
+        // 单独启动一个协程来监听缓冲进度
+        launch {
+            while (isActive) {
+                if (isBuffering) {
+                    val newProgress = exoPlayer.bufferedPercentage
+                    if (newProgress != bufferingProgress) {
+                        bufferingProgress = newProgress
+                        android.util.Log.d("VideoPlayer", "缓冲进度: $bufferingProgress%")
+                    }
+                }
+                delay(500)
+            }
+        }
 
         // 开始播放
         exoPlayer.playWhenReady = true
@@ -225,13 +276,19 @@ fun VideoPlayerScreenContent(
     var holdStarterJob by remember { mutableStateOf<Job?>(null) }
     var leftPressed by remember { mutableStateOf(false) }
     var rightPressed by remember { mutableStateOf(false) }
+    // 追踪是否正在快进（包括短按和长按），用于隐藏缓冲图标
+    var isSeeking by remember { mutableStateOf(false) }
+    var seekHideJob by remember { mutableStateOf<Job?>(null) }
 
     fun startHold(direction: Int) {
         if (holdSeekJob != null) return
         holdSeekDirection.value = direction
         isHoldSeeking.value = true
+        isSeeking = true
+        seekHideJob?.cancel()
         holdSeekPreviewMs.longValue = exoPlayer.currentPosition
         val duration = exoPlayer.duration.coerceAtLeast(0L)
+        android.util.Log.d("VideoPlayer", "开始长按快进/快退，方向: $direction, 当前位置: ${holdSeekPreviewMs.longValue}ms, 总时长: ${duration}ms")
         holdSeekJob = coroutineScope.launch {
             val startAt = System.currentTimeMillis()
             val intervalMs = 220L
@@ -257,8 +314,14 @@ fun VideoPlayerScreenContent(
         holdStarterJob = null
         holdSeekJob?.cancel()
         holdSeekJob = null
+        android.util.Log.d("VideoPlayer", "停止长按快进/快退")
         isHoldSeeking.value = false
         holdSeekDirection.value = 0
+        // 延迟清除seeking标志，给缓冲一些时间
+        seekHideJob = coroutineScope.launch {
+            delay(500)
+            isSeeking = false
+        }
     }
 
     // 在离开页面或销毁时停止并释放播放器
@@ -334,15 +397,18 @@ fun VideoPlayerScreenContent(
                                         if (leftPressed && holdSeekJob == null) startHold(-1)
                                     }
                                 }
+                                // 不消费事件，让dPadEvents处理短按
                                 return@onPreviewKeyEvent false
                             } else if (it.nativeKeyEvent.action == KeyEvent.ACTION_UP) {
                                 leftPressed = false
                                 holdStarterJob?.cancel()
                                 holdStarterJob = null
                                 if (holdSeekJob != null) {
+                                    // 长按结束，消费事件防止dPadEvents再次处理
                                     stopHold()
                                     return@onPreviewKeyEvent true
                                 }
+                                // 短按，不消费，让dPadEvents处理
                                 return@onPreviewKeyEvent false
                             }
                         }
@@ -381,7 +447,17 @@ fun VideoPlayerScreenContent(
             .dPadEvents(
                 videoPlayerState,
                 pulseState,
-                exoPlayer
+                exoPlayer,
+                onSeekStart = {
+                    isSeeking = true
+                    seekHideJob?.cancel()
+                },
+                onSeekEnd = {
+                    seekHideJob = coroutineScope.launch {
+                        delay(500)
+                        isSeeking = false
+                    }
+                }
             )
             .focusable()
     ) {
@@ -408,13 +484,53 @@ fun VideoPlayerScreenContent(
             }
         }
 
+        // 缓冲状态显示（快进/快退时不显示）
+        if (isBuffering && !isHoldSeeking.value && !isSeeking) {
+            // 添加一个短暂延迟，避免在快速跳转时闪现
+            var shouldShowBuffering by remember { mutableStateOf(false) }
+            LaunchedEffect(isBuffering) {
+                if (isBuffering) {
+                    delay(300) // 延迟300ms再显示
+                    shouldShowBuffering = true
+                } else {
+                    shouldShowBuffering = false
+                }
+            }
+            
+            if (shouldShowBuffering) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        CircularProgressIndicator(
+                            color = Color.White,
+                            modifier = Modifier.padding(16.dp)
+                        )
+                        Text(
+                            text = if (bufferingProgress > 0) "缓冲中... $bufferingProgress%" else "加载中...",
+                            color = Color.White,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                    }
+                }
+            }
+        }
+
         VideoPlayerOverlay(
             modifier = Modifier.align(Alignment.BottomCenter),
             focusRequester = focusRequester,
             isPlaying = isPlaying,
             isControlsVisible = videoPlayerState.isControlsVisible,
             centerButton = { VideoPlayerPulse(pulseState) },
-            showControls = { if (!isHoldSeeking.value) videoPlayerState.showControls(isPlaying) },
+            showControls = { 
+                // 只在控制栏已经可见时才重置自动隐藏计时器，避免在隐藏状态下自动显示
+                if (!isHoldSeeking.value && videoPlayerState.isControlsVisible) {
+                    videoPlayerState.showControls(isPlaying)
+                }
+            },
             controls = {
                 VideoPlayerControls(
                     player = exoPlayer,
@@ -444,6 +560,7 @@ fun VideoPlayerScreenContent(
         // Hold-seek progress bar
         if (isHoldSeeking.value) {
             val duration = exoPlayer.duration
+            android.util.Log.d("VideoPlayer", "显示长按进度条: 当前=${holdSeekPreviewMs.longValue}ms, 总=${duration}ms")
             HoldSeekProgressBar(
                 progress = if (duration > 0) holdSeekPreviewMs.longValue.toFloat() / duration.toFloat() else 0f,
                 currentPositionMs = holdSeekPreviewMs.longValue,
@@ -475,21 +592,27 @@ fun VideoPlayerScreenContent(
 private fun Modifier.dPadEvents(
     videoPlayerState: VideoPlayerState,
     pulseState: VideoPlayerPulseState,
-    player: ExoPlayer
+    player: ExoPlayer,
+    onSeekStart: () -> Unit = {},
+    onSeekEnd: () -> Unit = {}
 ): Modifier = this.handleDPadKeyEvents(
     onLeft = {
         if (!videoPlayerState.isControlsVisible) {
+            onSeekStart()
             val currentPos = player.currentPosition
             player.seekTo((currentPos - 10000).coerceAtLeast(0))
             pulseState.setType(BACK)
+            onSeekEnd()
         }
     },
     onRight = {
         if (!videoPlayerState.isControlsVisible) {
+            onSeekStart()
             val currentPos = player.currentPosition
             val duration = player.duration
             player.seekTo((currentPos + 10000).coerceAtMost(if (duration != C.TIME_UNSET) duration else Long.MAX_VALUE))
             pulseState.setType(FORWARD)
+            onSeekEnd()
         }
     },
     onUp = { videoPlayerState.showControls() },

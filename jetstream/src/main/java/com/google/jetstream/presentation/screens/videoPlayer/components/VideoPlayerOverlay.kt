@@ -66,13 +66,16 @@ fun VideoPlayerOverlay(
     }
 
     Box(
+        // 使用fillMaxSize确保背景覆盖全屏，但不阻止其他元素显示
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
+        // 背景层
         AnimatedVisibility(isControlsVisible, Modifier, fadeIn(), fadeOut()) {
             CinematicBackground(Modifier.fillMaxSize())
         }
 
+        // 控制栏层
         Column {
             Spacer(Modifier.weight(1f))
 
@@ -92,6 +95,7 @@ fun VideoPlayerOverlay(
             }
         }
 
+        // 中心按钮层
         centerButton()
     }
 }
