@@ -109,7 +109,28 @@ class SubtitleManager {
                 try {
                     if (_enabled.value) {
                         val currentPos = com.shuyu.gsyvideoplayer.GSYVideoManager.instance().currentPosition
-                        _currentSubtitle.value = findSubtitleAtPosition(currentPos)
+                        
+                        // 检查是否是内嵌字幕
+                        val isEmbeddedSubtitle = _selectedSubtitle.value?.url?.startsWith("embedded://") == true
+                        
+                        if (isEmbeddedSubtitle) {
+                            // 内嵌字幕：检查当前字幕是否在有效时间范围内
+                            val currentSubtitle = _currentSubtitle.value
+                            if (currentSubtitle != null) {
+                                // 检查播放位置是否在字幕的时间范围内
+                                val isInRange = currentPos >= currentSubtitle.startTimeMs && 
+                                               currentPos <= currentSubtitle.endTimeMs
+                                
+                                if (!isInRange) {
+                                    // 播放位置超出字幕时间范围（可能是往后播放或往前退），清除显示
+                                    _currentSubtitle.value = null
+                                    android.util.Log.d("SubtitleManager", "内嵌字幕超出时间范围，清除显示 (当前:${currentPos}ms, 字幕:${currentSubtitle.startTimeMs}-${currentSubtitle.endTimeMs}ms)")
+                                }
+                            }
+                        } else {
+                            // 外部字幕：根据播放位置查找对应字幕
+                            _currentSubtitle.value = findSubtitleAtPosition(currentPos)
+                        }
                     } else {
                         _currentSubtitle.value = null
                     }
@@ -159,6 +180,46 @@ class SubtitleManager {
     }
     
     /**
+     * 标记检测到内嵌字幕，自动启用字幕显示
+     * 等待 ExoPlayer TextOutput 提供字幕数据
+     */
+    fun markEmbeddedSubtitleDetected(track: EmbeddedSubtitleTrack) {
+        hasAutoSearched = true  // 标记已有字幕，不再搜索外部字幕
+        _enabled.value = true  // 自动启用字幕显示
+        _selectedSubtitle.value = SubtitleTrack(
+            name = track.label,
+            url = "embedded://${track.trackIndex}",
+            language = track.language,
+            format = track.format
+        )
+        android.util.Log.d("SubtitleManager", "检测到内嵌字幕: ${track.label} (${track.language})，已自动启用")
+    }
+    
+    /**
+     * 从 ExoPlayer TextOutput 接收字幕数据
+     * 这会被实时调用，每当有新字幕时
+     */
+    fun updateEmbeddedSubtitle(text: String, startTimeMs: Long, endTimeMs: Long) {
+        // 实时更新当前字幕
+        if (_enabled.value && text.isNotEmpty()) {
+            _currentSubtitle.value = SubtitleItem(
+                startTimeMs = startTimeMs,
+                endTimeMs = endTimeMs,
+                text = text
+            )
+        }
+    }
+    
+    /**
+     * 清除当前显示的内嵌字幕
+     */
+    fun clearEmbeddedSubtitle() {
+        if (_selectedSubtitle.value?.url?.startsWith("embedded://") == true) {
+            _currentSubtitle.value = null
+        }
+    }
+    
+    /**
      * 启用/禁用字幕显示
      */
     fun setEnabled(enabled: Boolean, coroutineScope: CoroutineScope? = null) {
@@ -167,6 +228,7 @@ class SubtitleManager {
             _currentSubtitle.value = null
         } else {
             // 启用字幕时，如果还没有加载字幕且有电影名称，自动搜索下载
+            // 注意：如果已经有内嵌字幕（hasAutoSearched=true），则不再搜索
             if (subtitleItems.isEmpty() && !hasAutoSearched && movieName != null && coroutineScope != null) {
                 android.util.Log.d("SubtitleManager", "字幕已启用，开始自动搜索")
                 coroutineScope.launch {

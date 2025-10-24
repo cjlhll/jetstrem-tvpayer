@@ -53,6 +53,7 @@ import com.google.jetstream.presentation.screens.videoPlayer.components.VideoPla
 import com.google.jetstream.presentation.screens.videoPlayer.components.VideoPlayerState
 import com.google.jetstream.presentation.screens.videoPlayer.components.rememberVideoPlayerPulseState
 import com.google.jetstream.presentation.screens.videoPlayer.components.rememberVideoPlayerState
+import com.google.jetstream.presentation.screens.videoPlayer.subtitle.EmbeddedSubtitleExtractor
 import com.google.jetstream.presentation.screens.videoPlayer.subtitle.SubtitleConfigDialog
 import com.google.jetstream.presentation.screens.videoPlayer.subtitle.SubtitleFormat
 import com.google.jetstream.presentation.screens.videoPlayer.subtitle.SubtitleManager
@@ -394,6 +395,32 @@ fun VideoPlayerScreenContent(
                             override fun onPrepared(url: String, vararg objects: Any) {
                                 super.onPrepared(url, *objects)
                                 android.util.Log.d("VideoPlayer", "Video prepared with core: $currentCore")
+                                
+                                // 检测并提取内嵌字幕
+                                if (EmbeddedSubtitleExtractor.mayHaveEmbeddedSubtitles(url)) {
+                                    android.util.Log.d("VideoPlayer", "视频可能包含内嵌字幕，开始提取")
+                                    coroutineScope.launch {
+                                        try {
+                                            val tracks = EmbeddedSubtitleExtractor.extractSubtitleTracks(this@apply)
+                                            if (tracks.isNotEmpty()) {
+                                                // 选择最佳字幕轨道
+                                                val bestTrack = EmbeddedSubtitleExtractor.selectBestSubtitle(tracks)
+                                                if (bestTrack != null) {
+                                                    android.util.Log.d("VideoPlayer", "选中内嵌字幕: ${bestTrack.label}")
+                                                    subtitleManager.markEmbeddedSubtitleDetected(bestTrack)
+                                                    
+                                                    // 配置 ExoPlayer 监听字幕数据
+                                                    setupEmbeddedSubtitleListener(this@apply, subtitleManager)
+                                                }
+                                            } else {
+                                                android.util.Log.d("VideoPlayer", "未发现内嵌字幕轨道")
+                                            }
+                                        } catch (e: Exception) {
+                                            android.util.Log.e("VideoPlayer", "提取内嵌字幕失败", e)
+                                        }
+                                    }
+                                }
+                                
                                 if (!playerInitialized) {
                                     playerInitialized = true
                                     onVideoStarted()
@@ -492,8 +519,8 @@ fun VideoPlayerScreenContent(
             }
         )
         
-        // 字幕显示层
-        if (currentSubtitle != null && subtitleEnabled && !videoPlayerState.isControlsVisible) {
+        // 字幕显示层（内嵌字幕始终显示，不受控制栏影响）
+        if (currentSubtitle != null && subtitleEnabled) {
             SubtitleOverlay(
                 subtitle = currentSubtitle!!,
                 modifier = Modifier
@@ -573,6 +600,118 @@ private fun switchPlayerCore(context: android.content.Context, core: PlayerCore)
         }
     } catch (e: Exception) {
         android.util.Log.e("VideoPlayer", "切换内核失败", e)
+    }
+}
+
+/**
+ * 配置内嵌字幕监听器
+ * 通过 ExoPlayer 的 TextOutput 接收字幕数据，传递给我们的渲染系统
+ */
+private fun setupEmbeddedSubtitleListener(
+    player: StandardGSYVideoPlayer,
+    subtitleManager: SubtitleManager
+) {
+    try {
+        // 从 GSYVideoManager 获取播放器管理器
+        val gsyVideoManager = GSYVideoManager.instance()
+        val playerManager = gsyVideoManager.player
+        
+        android.util.Log.d("VideoPlayer", "PlayerManager 类型: ${playerManager?.javaClass?.name}")
+        
+        // 从 Exo2PlayerManager 获取 ExoPlayer（两层反射）
+        val exoPlayer = try {
+            // 第一步：获取 IjkExo2MediaPlayer
+            val mediaPlayerField = playerManager?.javaClass?.getDeclaredField("mediaPlayer")
+            mediaPlayerField?.isAccessible = true
+            val ijkExo2MediaPlayer = mediaPlayerField?.get(playerManager)
+            
+            android.util.Log.d("VideoPlayer", "获取到 mediaPlayer: ${ijkExo2MediaPlayer?.javaClass?.name}")
+            
+            if (ijkExo2MediaPlayer != null) {
+                // 第二步：从 IjkExo2MediaPlayer 获取真正的 ExoPlayer
+                // 正确的字段名是 mInternalPlayer
+                try {
+                    val exoPlayerField = ijkExo2MediaPlayer.javaClass.getDeclaredField("mInternalPlayer")
+                    exoPlayerField.isAccessible = true
+                    exoPlayerField.get(ijkExo2MediaPlayer) as? androidx.media3.exoplayer.ExoPlayer
+                } catch (e: Exception) {
+                    android.util.Log.e("VideoPlayer", "获取 mInternalPlayer 失败: ${e.message}")
+                    null
+                }
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("VideoPlayer", "无法获取 ExoPlayer: ${e.message}")
+            null
+        }
+        
+        if (exoPlayer != null) {
+            android.util.Log.d("VideoPlayer", "成功获取 ExoPlayer: ${exoPlayer.javaClass.name}")
+            
+            // 启用字幕轨道（确保 ExoPlayer 选中字幕）
+            try {
+                val trackSelectionParameters = exoPlayer.trackSelectionParameters
+                    .buildUpon()
+                    .setPreferredTextLanguage("zh")  // 优先选择中文字幕
+                    .setSelectUndeterminedTextLanguage(true)  // 选择未确定语言的字幕
+                    .build()
+                exoPlayer.trackSelectionParameters = trackSelectionParameters
+                android.util.Log.d("VideoPlayer", "已启用字幕轨道选择")
+            } catch (e: Exception) {
+                android.util.Log.e("VideoPlayer", "设置轨道选择参数失败", e)
+            }
+            
+            // 添加字幕输出监听器
+            exoPlayer.addListener(object : androidx.media3.common.Player.Listener {
+                override fun onCues(cueGroup: androidx.media3.common.text.CueGroup) {
+                    super.onCues(cueGroup)
+                    
+                    // 处理字幕数据
+                    if (cueGroup.cues.isNotEmpty()) {
+                        // 合并所有字幕行
+                        val text = cueGroup.cues.joinToString("\n") { cue ->
+                            cue.text?.toString() ?: ""
+                        }
+                        
+                        if (text.isNotBlank()) {
+                            // 获取当前播放位置
+                            val currentPosition = exoPlayer.currentPosition
+                            
+                            // 使用 CueGroup 的时间戳（如果有）
+                            val startTime = if (cueGroup.presentationTimeUs != androidx.media3.common.C.TIME_UNSET) {
+                                cueGroup.presentationTimeUs / 1000 // 微秒转毫秒
+                            } else {
+                                currentPosition
+                            }
+                            
+                            // 估算结束时间（字幕通常显示2-5秒）
+                            // 根据文本长度动态调整
+                            val duration = when {
+                                text.length < 20 -> 2000L
+                                text.length < 50 -> 3000L
+                                text.length < 100 -> 4000L
+                                else -> 5000L
+                            }
+                            val endTime = startTime + duration
+                            
+                            android.util.Log.d("EmbeddedSubtitle", "字幕: $text, 时间: ${startTime}ms-${endTime}ms")
+                            
+                            // 更新字幕管理器
+                            subtitleManager.updateEmbeddedSubtitle(text, startTime, endTime)
+                        }
+                    }
+                    // 注意：不要在 cues 为空时清除字幕，让它自然超时
+                    // ExoPlayer 会在字幕结束时发送空的 cueGroup，但我们希望字幕保持显示直到时间到
+                }
+            })
+            
+            android.util.Log.d("VideoPlayer", "内嵌字幕监听器已配置，字幕已自动启用")
+        } else {
+            android.util.Log.w("VideoPlayer", "无法获取 ExoPlayer 实例")
+        }
+    } catch (e: Exception) {
+        android.util.Log.e("VideoPlayer", "配置内嵌字幕监听器失败", e)
     }
 }
 
