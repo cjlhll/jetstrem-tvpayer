@@ -53,6 +53,11 @@ import com.google.jetstream.presentation.screens.videoPlayer.components.VideoPla
 import com.google.jetstream.presentation.screens.videoPlayer.components.VideoPlayerState
 import com.google.jetstream.presentation.screens.videoPlayer.components.rememberVideoPlayerPulseState
 import com.google.jetstream.presentation.screens.videoPlayer.components.rememberVideoPlayerState
+import com.google.jetstream.presentation.screens.videoPlayer.subtitle.SubtitleConfigDialog
+import com.google.jetstream.presentation.screens.videoPlayer.subtitle.SubtitleFormat
+import com.google.jetstream.presentation.screens.videoPlayer.subtitle.SubtitleManager
+import com.google.jetstream.presentation.screens.videoPlayer.subtitle.SubtitleOverlay
+import com.google.jetstream.presentation.screens.videoPlayer.subtitle.SubtitleTrack
 import com.google.jetstream.presentation.utils.handleDPadKeyEvents
 import com.shuyu.gsyvideoplayer.GSYVideoManager
 import com.shuyu.gsyvideoplayer.listener.GSYSampleCallBack
@@ -142,18 +147,53 @@ fun VideoPlayerScreenContent(
     onSaveProgress: (currentPositionMs: Long, durationMs: Long) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     var gsyPlayer by remember { mutableStateOf<StandardGSYVideoPlayer?>(null) }
     var playerInitialized by remember { mutableStateOf(false) }
     
     // 内核状态管理
     var currentCore by remember { mutableStateOf(PlayerCore.MEDIA3) }
     var savedPositionForCoreSwitch by remember { mutableStateOf(0L) }
+    
+    // 字幕管理器
+    val subtitleManager = remember { SubtitleManager() }
+    val currentSubtitle by subtitleManager.currentSubtitle
+    val subtitleEnabled by subtitleManager.enabled
+    val subtitleDelay by subtitleManager.delayMs
+    var showSubtitleConfig by remember { mutableStateOf(false) }
 
+    // 设置测试字幕（不自动加载）
+    LaunchedEffect(Unit) {
+        val testSubtitles = listOf(
+            SubtitleTrack(
+                name = "测试字幕",
+                url = "https://raw.githubusercontent.com/cjlhll/openclash-rules/refs/heads/main/test.vtt",
+                language = "zh",
+                format = SubtitleFormat.VTT
+            )
+        )
+        subtitleManager.setAvailableSubtitles(testSubtitles)
+        
+        // 开始字幕同步
+        subtitleManager.startSync(coroutineScope)
+    }
+    
+    // 监听字幕开关状态，开启时自动加载字幕
+    LaunchedEffect(subtitleEnabled) {
+        if (subtitleEnabled) {
+            // 如果开启字幕且还没有加载，则加载第一个可用字幕
+            val availableSubtitles = subtitleManager.availableSubtitles.value
+            if (subtitleManager.selectedSubtitle.value == null && availableSubtitles.isNotEmpty()) {
+                android.util.Log.d("VideoPlayer", "Subtitle enabled, loading first subtitle")
+                subtitleManager.loadSubtitle(availableSubtitles.first())
+            }
+        }
+    }
+    
     // Hold-seek states
     val isHoldSeeking = remember { mutableStateOf(false) }
     val holdSeekPreviewMs = remember { mutableStateOf(0L) }
     val holdSeekDirection = remember { mutableStateOf(0) }
-    val coroutineScope = rememberCoroutineScope()
     var holdSeekJob by remember { mutableStateOf<Job?>(null) }
     var holdStarterJob by remember { mutableStateOf<Job?>(null) }
     var leftPressed by remember { mutableStateOf(false) }
@@ -201,6 +241,9 @@ fun VideoPlayerScreenContent(
     DisposableEffect(Unit) {
         onDispose {
             try {
+                // 停止字幕同步
+                subtitleManager.stopSync()
+                
                 // 使用 GSYVideoManager API 保存播放进度
                 val currentPosition = GSYVideoManager.instance().currentPosition
                 val duration = GSYVideoManager.instance().duration
@@ -459,7 +502,7 @@ fun VideoPlayerScreenContent(
                     },
                     onShowControls = { videoPlayerState.showControls(isPlaying) },
                     onClickSubtitles = { 
-                        // TODO: 实现字幕选择功能
+                        showSubtitleConfig = true
                     },
                     onClickAudio = { 
                         // TODO: 实现音轨选择功能
@@ -467,6 +510,16 @@ fun VideoPlayerScreenContent(
                 )
             }
         )
+        
+        // 字幕显示层
+        if (currentSubtitle != null && subtitleEnabled && !videoPlayerState.isControlsVisible) {
+            SubtitleOverlay(
+                subtitle = currentSubtitle!!,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 120.dp)
+            )
+        }
 
         // Separate progress bar shown only while hold-seeking with hidden controls
         if (isHoldSeeking.value) {
@@ -480,7 +533,22 @@ fun VideoPlayerScreenContent(
                     .padding(bottom = 96.dp)
             )
         }
-
+    }
+    
+    // 字幕配置对话框
+    if (showSubtitleConfig) {
+        SubtitleConfigDialog(
+            showDialog = showSubtitleConfig,
+            enabled = subtitleEnabled,
+            delayMs = subtitleDelay,
+            onDismiss = { showSubtitleConfig = false },
+            onToggleEnabled = { enabled ->
+                subtitleManager.setEnabled(enabled)
+            },
+            onDelayChanged = { newDelay ->
+                subtitleManager.setDelay(newDelay)
+            }
+        )
     }
 }
 
