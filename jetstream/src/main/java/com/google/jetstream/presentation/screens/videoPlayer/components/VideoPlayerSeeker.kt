@@ -31,31 +31,32 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.media3.common.C
+import androidx.media3.exoplayer.ExoPlayer
 import com.google.jetstream.data.util.StringConstants
-import com.shuyu.gsyvideoplayer.GSYVideoManager
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 
 @Composable
 fun VideoPlayerSeeker(
-    player: Any?, // 不再使用 Player，改为使用 GSYVideoManager
+    player: ExoPlayer?,
     focusRequester: FocusRequester,
     modifier: Modifier = Modifier,
     onShowControls: () -> Unit = {},
 ) {
-    // 从 GSYVideoManager 获取播放状态和进度
+    // 从 ExoPlayer 获取播放状态和进度
     var currentPositionMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(0L) }
     var isPlaying by remember { mutableStateOf(false) }
     
-    LaunchedEffect(Unit) {
+    LaunchedEffect(player) {
         while (isActive) {
-            try {
-                currentPositionMs = GSYVideoManager.instance().currentPosition
-                durationMs = GSYVideoManager.instance().duration
-                isPlaying = GSYVideoManager.instance().isPlaying
-            } catch (_: Throwable) {}
+            if (player != null) {
+                currentPositionMs = player.currentPosition
+                durationMs = if (player.duration != C.TIME_UNSET) player.duration else 0L
+                isPlaying = player.isPlaying
+            }
             delay(300)
         }
     }
@@ -65,10 +66,10 @@ fun VideoPlayerSeeker(
     
     // Seek 回调
     val onSeek: (Float) -> Unit = { progress ->
-        try {
+        if (player != null) {
             val targetPos = (durationMs * progress).toLong()
-            GSYVideoManager.instance().seekTo(targetPos)
-        } catch (_: Throwable) {}
+            player.seekTo(targetPos)
+        }
     }
 
     val contentProgressString =
@@ -96,14 +97,13 @@ fun VideoPlayerSeeker(
             modifier = Modifier.focusRequester(focusRequester),
             icon = if (!isPlaying) Icons.Default.PlayArrow else Icons.Default.Pause,
             onClick = {
-                // 使用 GSYVideoManager API 控制播放/暂停
-                try {
+                if (player != null) {
                     if (isPlaying) {
-                        GSYVideoManager.instance().pause()
+                        player.pause()
                     } else {
-                        GSYVideoManager.instance().start()
+                        player.play()
                     }
-                } catch (_: Throwable) {}
+                }
             },
             isPlaying = isPlaying,
             contentDescription = StringConstants

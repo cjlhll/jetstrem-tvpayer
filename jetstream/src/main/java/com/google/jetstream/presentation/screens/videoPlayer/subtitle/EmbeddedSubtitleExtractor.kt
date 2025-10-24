@@ -18,16 +18,12 @@ package com.google.jetstream.presentation.screens.videoPlayer.subtitle
 
 import android.util.Log
 import androidx.media3.common.C
-import androidx.media3.common.Format
 import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * 内嵌字幕提取器
- * 用于从视频文件（MKV、MP4等）中提取内嵌字幕轨道信息
- * 
- * 注意：这里只提取轨道信息，实际字幕数据由 ExoPlayer 提供，我们的解析器统一渲染
+ * 内嵌字幕提取器 - 直接使用 Media3 ExoPlayer
  */
 object EmbeddedSubtitleExtractor {
     private const val TAG = "EmbeddedSubtitleExtractor"
@@ -44,76 +40,24 @@ object EmbeddedSubtitleExtractor {
     }
     
     /**
-     * 从播放器中提取内嵌字幕轨道信息
-     * 
-     * @param player GSYVideoPlayer 实例
-     * @return 字幕轨道列表
+     * 从 ExoPlayer 中提取内嵌字幕轨道信息
      */
     suspend fun extractSubtitleTracks(
-        player: com.shuyu.gsyvideoplayer.video.StandardGSYVideoPlayer
+        player: ExoPlayer
     ): List<EmbeddedSubtitleTrack> = withContext(Dispatchers.Main) {
         try {
-            // 从 GSYVideoManager 获取播放器管理器
-            val gsyVideoManager = com.shuyu.gsyvideoplayer.GSYVideoManager.instance()
-            val playerManager = gsyVideoManager.player
-            
-            Log.d(TAG, "PlayerManager 类型: ${playerManager?.javaClass?.name}")
-            
-            // 尝试从 Exo2PlayerManager 获取 ExoPlayer
-            val exoPlayer = try {
-                // 第一步：获取 IjkExo2MediaPlayer
-                val mediaPlayerField = playerManager?.javaClass?.getDeclaredField("mediaPlayer")
-                mediaPlayerField?.isAccessible = true
-                val ijkExo2MediaPlayer = mediaPlayerField?.get(playerManager)
-                
-                Log.d(TAG, "获取到 mediaPlayer: ${ijkExo2MediaPlayer?.javaClass?.name}")
-                
-                if (ijkExo2MediaPlayer != null) {
-                    // 第二步：从 IjkExo2MediaPlayer 获取真正的 ExoPlayer
-                    // 正确的字段名是 mInternalPlayer
-                    val exoPlayerInstance = try {
-                        val exoPlayerField = ijkExo2MediaPlayer.javaClass.getDeclaredField("mInternalPlayer")
-                        exoPlayerField.isAccessible = true
-                        exoPlayerField.get(ijkExo2MediaPlayer) as? ExoPlayer
-                    } catch (e: Exception) {
-                        Log.e(TAG, "获取 mInternalPlayer 失败: ${e.message}")
-                        null
-                    }
-                    exoPlayerInstance
-                } else {
-                    null
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "获取 ExoPlayer 失败: ${e.message}")
-                null
-            }
-            
-            if (exoPlayer == null) {
-                Log.w(TAG, "无法获取 ExoPlayer 实例，尝试列出 PlayerManager 的所有字段")
-                playerManager?.javaClass?.declaredFields?.forEach { field ->
-                    Log.d(TAG, "字段: ${field.name}, 类型: ${field.type.name}")
-                }
-                return@withContext emptyList()
-            }
-            
-            Log.d(TAG, "成功获取 ExoPlayer 实例: ${exoPlayer.javaClass.name}")
-            
             val tracks = mutableListOf<EmbeddedSubtitleTrack>()
-            val currentTracks = exoPlayer.currentTracks
+            val currentTracks = player.currentTracks
             
-            // 遍历所有轨道组
             for (trackGroup in currentTracks.groups) {
                 if (trackGroup.type == C.TRACK_TYPE_TEXT) {
-                    // 找到字幕轨道
                     for (i in 0 until trackGroup.length) {
                         val format = trackGroup.getTrackFormat(i)
                         
-                        // 解析字幕信息
                         val language = format.language ?: "und"
                         val label = format.label ?: language
                         val mimeType = format.sampleMimeType ?: "application/x-subrip"
                         
-                        // 判断字幕格式
                         val subtitleFormat = when {
                             mimeType.contains("subrip") || mimeType.contains("srt") -> SubtitleFormat.SRT
                             mimeType.contains("webvtt") || mimeType.contains("vtt") -> SubtitleFormat.VTT
@@ -149,12 +93,10 @@ object EmbeddedSubtitleExtractor {
     
     /**
      * 根据语言优先级选择最佳字幕轨道
-     * 优先级：简英双语 → 简体 → 繁英双语 → 繁体 → 英语
      */
     fun selectBestSubtitle(tracks: List<EmbeddedSubtitleTrack>): EmbeddedSubtitleTrack? {
         if (tracks.isEmpty()) return null
         
-        // 定义语言优先级
         val languagePriority = mapOf(
             "chi" to 1, "zh" to 1,
             "zh-CN" to 2, "zh-Hans" to 2, "zho" to 2, "chi_sim" to 2,
@@ -162,7 +104,6 @@ object EmbeddedSubtitleExtractor {
             "eng" to 5, "en" to 5, "en-US" to 5
         )
         
-        // 检查标签中的关键字
         fun getLanguagePriorityByLabel(label: String): Int {
             return when {
                 label.contains("简", ignoreCase = true) && 
@@ -176,7 +117,6 @@ object EmbeddedSubtitleExtractor {
             }
         }
         
-        // 按优先级排序
         val sortedTracks = tracks.sortedWith(compareBy(
             { 
                 val labelPriority = getLanguagePriorityByLabel(it.label)

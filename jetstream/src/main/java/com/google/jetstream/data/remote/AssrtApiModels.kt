@@ -52,23 +52,55 @@ data class AssrtDetailResult(
 
 /**
  * 字幕基本信息
+ * 兼容ASSRT API的新旧两种格式
  */
 @Serializable
 data class AssrtSubtitle(
-    val id: Int,
+    // 新格式字段
+    val id: Int? = null,
     @SerialName("native_name")
-    val nativeName: String,
-    val videoname: String? = null,
-    val revision: Int? = null,  // 修订版本可能为 null
-    val subtype: String,
+    val nativeName: String? = null,
     @SerialName("upload_time")
-    val uploadTime: String,
+    val uploadTime: String? = null,
+    val subtype: String? = null,
+    
+    // 旧格式字段
+    val fileid: String? = null,
+    @SerialName("m_title")
+    val mTitle: String? = null,
+    val uploadtime: String? = null,
+    @SerialName("m_subtype")
+    val mSubtype: String? = null,
+    
+    // 共用字段
+    val videoname: String? = null,
+    val revision: Int? = null,
     @SerialName("vote_score")
-    val voteScore: Int? = null,  // 评分可能为 null
+    val voteScore: Int? = null,
     @SerialName("release_site")
     val releaseSite: String? = null,
     val lang: AssrtLanguage? = null
-)
+) {
+    /**
+     * 获取字幕ID（兼容新旧格式）
+     */
+    fun getSubtitleId(): Int? = id ?: fileid?.toIntOrNull()
+    
+    /**
+     * 获取字幕名称（兼容新旧格式）
+     */
+    fun getSubtitleName(): String? = nativeName ?: mTitle
+    
+    /**
+     * 获取上传时间（兼容新旧格式）
+     */
+    fun getSubtitleUploadTime(): String? = uploadTime ?: uploadtime
+    
+    /**
+     * 获取字幕类型（兼容新旧格式）
+     */
+    fun getSubtitleType(): String? = subtype ?: mSubtype
+}
 
 /**
  * 字幕详细信息
@@ -81,7 +113,7 @@ data class AssrtSubtitleDetail(
     val nativeName: String,
     val url: String,
     val size: Int,
-    val subtype: String,
+    val subtype: String? = null,  // 字幕类型可能为 null
     @SerialName("upload_time")
     val uploadTime: String,
     @SerialName("vote_score")

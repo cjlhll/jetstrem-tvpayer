@@ -20,12 +20,15 @@ import android.content.Context
 import android.widget.Toast
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.State
+import androidx.media3.common.C
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import com.google.jetstream.data.remote.AssrtService
 import kotlinx.coroutines.*
 import java.net.URL
 
 /**
- * 字幕管理器
+ * 字幕管理器 - 使用 Media3 ExoPlayer
  */
 class SubtitleManager(private val context: Context? = null) {
     
@@ -50,7 +53,7 @@ class SubtitleManager(private val context: Context? = null) {
     private var subtitleItems: List<SubtitleItem> = emptyList()
     private var syncJob: Job? = null
     private var movieName: String? = null
-    private var hasAutoSearched = false  // 标记是否已自动搜索过
+    private var hasAutoSearched = false
     
     private val srtParser = SRTSubtitleParser()
     private val vttParser = VTTSubtitleParser()
@@ -65,11 +68,9 @@ class SubtitleManager(private val context: Context? = null) {
             _isLoading.value = true
             android.util.Log.d("SubtitleManager", "Loading subtitle from: ${track.url}")
             
-            // 下载字幕文件内容
             val content = URL(track.url).readText()
             android.util.Log.d("SubtitleManager", "Downloaded ${content.length} bytes")
             
-            // 根据格式解析
             subtitleItems = when (track.format) {
                 SubtitleFormat.SRT -> srtParser.parseSRT(content)
                 SubtitleFormat.VTT -> vttParser.parseVTT(content)
@@ -80,7 +81,6 @@ class SubtitleManager(private val context: Context? = null) {
             _selectedSubtitle.value = track
             android.util.Log.d("SubtitleManager", "Loaded ${subtitleItems.size} subtitle items")
             
-            // 打印前几条字幕用于调试
             subtitleItems.take(3).forEach { item ->
                 android.util.Log.d("SubtitleManager", "Subtitle: ${item.startTimeMs}ms - ${item.endTimeMs}ms: ${item.text.take(50)}")
             }
@@ -104,13 +104,13 @@ class SubtitleManager(private val context: Context? = null) {
     /**
      * 开始同步字幕（根据播放位置）
      */
-    fun startSync(coroutineScope: CoroutineScope) {
+    fun startSync(coroutineScope: CoroutineScope, player: ExoPlayer?) {
         syncJob?.cancel()
         syncJob = coroutineScope.launch {
             while (isActive) {
                 try {
-                    if (_enabled.value) {
-                        val currentPos = com.shuyu.gsyvideoplayer.GSYVideoManager.instance().currentPosition
+                    if (_enabled.value && player != null) {
+                        val currentPos = player.currentPosition
                         
                         // 检查是否是内嵌字幕
                         val isEmbeddedSubtitle = _selectedSubtitle.value?.url?.startsWith("embedded://") == true
@@ -119,14 +119,12 @@ class SubtitleManager(private val context: Context? = null) {
                             // 内嵌字幕：检查当前字幕是否在有效时间范围内
                             val currentSubtitle = _currentSubtitle.value
                             if (currentSubtitle != null) {
-                                // 检查播放位置是否在字幕的时间范围内
                                 val isInRange = currentPos >= currentSubtitle.startTimeMs && 
                                                currentPos <= currentSubtitle.endTimeMs
                                 
                                 if (!isInRange) {
-                                    // 播放位置超出字幕时间范围（可能是往后播放或往前退），清除显示
                                     _currentSubtitle.value = null
-                                    android.util.Log.d("SubtitleManager", "内嵌字幕超出时间范围，清除显示 (当前:${currentPos}ms, 字幕:${currentSubtitle.startTimeMs}-${currentSubtitle.endTimeMs}ms)")
+                                    android.util.Log.d("SubtitleManager", "内嵌字幕超出时间范围，清除显示")
                                 }
                             }
                         } else {
@@ -139,7 +137,7 @@ class SubtitleManager(private val context: Context? = null) {
                 } catch (e: Exception) {
                     // 播放器未初始化
                 }
-                delay(100) // 每100ms更新一次
+                delay(100)
             }
         }
     }
@@ -177,47 +175,91 @@ class SubtitleManager(private val context: Context? = null) {
      */
     fun setMovieName(name: String) {
         movieName = name
-        hasAutoSearched = false  // 重置搜索标记
+        hasAutoSearched = false
         android.util.Log.d("SubtitleManager", "设置电影名称: $name")
     }
     
     /**
-     * 标记检测到内嵌字幕，自动启用字幕显示
-     * 等待 ExoPlayer TextOutput 提供字幕数据
+     * 检测并启用内嵌字幕
      */
-    fun markEmbeddedSubtitleDetected(track: EmbeddedSubtitleTrack) {
-        hasAutoSearched = true  // 标记已有字幕，不再搜索外部字幕
-        _enabled.value = true  // 自动启用字幕显示
-        _selectedSubtitle.value = SubtitleTrack(
-            name = track.label,
-            url = "embedded://${track.trackIndex}",
-            language = track.language,
-            format = track.format
-        )
-        android.util.Log.d("SubtitleManager", "检测到内嵌字幕: ${track.label} (${track.language})，已自动启用")
-    }
-    
-    /**
-     * 从 ExoPlayer TextOutput 接收字幕数据
-     * 这会被实时调用，每当有新字幕时
-     */
-    fun updateEmbeddedSubtitle(text: String, startTimeMs: Long, endTimeMs: Long) {
-        // 实时更新当前字幕
-        if (_enabled.value && text.isNotEmpty()) {
-            _currentSubtitle.value = SubtitleItem(
-                startTimeMs = startTimeMs,
-                endTimeMs = endTimeMs,
-                text = text
-            )
-        }
-    }
-    
-    /**
-     * 清除当前显示的内嵌字幕
-     */
-    fun clearEmbeddedSubtitle() {
-        if (_selectedSubtitle.value?.url?.startsWith("embedded://") == true) {
-            _currentSubtitle.value = null
+    fun detectEmbeddedSubtitles(player: ExoPlayer) {
+        try {
+            val currentTracks = player.currentTracks
+            val textTracks = mutableListOf<SubtitleTrack>()
+            
+            for (trackGroup in currentTracks.groups) {
+                if (trackGroup.type == C.TRACK_TYPE_TEXT) {
+                    for (i in 0 until trackGroup.length) {
+                        val format = trackGroup.getTrackFormat(i)
+                        val language = format.language ?: "und"
+                        val label = format.label ?: language
+                        val mimeType = format.sampleMimeType ?: "application/x-subrip"
+                        
+                        val subtitleFormat = when {
+                            mimeType.contains("subrip") || mimeType.contains("srt") -> SubtitleFormat.SRT
+                            mimeType.contains("webvtt") || mimeType.contains("vtt") -> SubtitleFormat.VTT
+                            mimeType.contains("ass") || mimeType.contains("ssa") -> SubtitleFormat.ASS
+                            mimeType.contains("ttml") || mimeType.contains("xml") -> SubtitleFormat.TTML
+                            else -> SubtitleFormat.SRT
+                        }
+                        
+                        textTracks.add(
+                            SubtitleTrack(
+                                name = label,
+                                language = language,
+                                url = "embedded://$i",
+                                format = subtitleFormat
+                            )
+                        )
+                        
+                        android.util.Log.d("SubtitleManager", "发现内嵌字幕轨道: $label ($language)")
+                    }
+                }
+            }
+            
+            if (textTracks.isNotEmpty()) {
+                hasAutoSearched = true
+                _enabled.value = true
+                _selectedSubtitle.value = textTracks.firstOrNull()
+                
+                // 添加字幕监听器
+                player.addListener(object : Player.Listener {
+                    override fun onCues(cueGroup: androidx.media3.common.text.CueGroup) {
+                        if (_enabled.value && cueGroup.cues.isNotEmpty()) {
+                            val text = cueGroup.cues.joinToString("\n") { cue ->
+                                cue.text?.toString() ?: ""
+                            }
+                            
+                            if (text.isNotBlank()) {
+                                val currentPosition = player.currentPosition
+                                val startTime = if (cueGroup.presentationTimeUs != C.TIME_UNSET) {
+                                    cueGroup.presentationTimeUs / 1000
+                                } else {
+                                    currentPosition
+                                }
+                                
+                                val duration = when {
+                                    text.length < 20 -> 2000L
+                                    text.length < 50 -> 3000L
+                                    text.length < 100 -> 4000L
+                                    else -> 5000L
+                                }
+                                val endTime = startTime + duration
+                                
+                                _currentSubtitle.value = SubtitleItem(
+                                    startTimeMs = startTime,
+                                    endTimeMs = endTime,
+                                    text = text
+                                )
+                            }
+                        }
+                    }
+                })
+                
+                android.util.Log.d("SubtitleManager", "检测到 ${textTracks.size} 个内嵌字幕轨道，已自动启用")
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("SubtitleManager", "检测内嵌字幕失败", e)
         }
     }
     
@@ -229,8 +271,6 @@ class SubtitleManager(private val context: Context? = null) {
         if (!enabled) {
             _currentSubtitle.value = null
         } else {
-            // 启用字幕时，如果还没有加载字幕且有电影名称，自动搜索下载
-            // 注意：如果已经有内嵌字幕（hasAutoSearched=true），则不再搜索
             if (subtitleItems.isEmpty() && !hasAutoSearched && movieName != null && coroutineScope != null) {
                 android.util.Log.d("SubtitleManager", "字幕已启用，开始自动搜索")
                 coroutineScope.launch {
@@ -263,14 +303,13 @@ class SubtitleManager(private val context: Context? = null) {
             return false
         }
         
-        hasAutoSearched = true  // 标记已搜索
+        hasAutoSearched = true
         
         return withContext(Dispatchers.IO) {
             try {
                 _isLoading.value = true
                 android.util.Log.d("SubtitleManager", "开始自动搜索字幕: $name")
                 
-                // 调用 ASSRT API 搜索下载字幕
                 val result = AssrtService.findAndDownloadBestSubtitle(name)
                 
                 if (result == null) {
@@ -282,7 +321,6 @@ class SubtitleManager(private val context: Context? = null) {
                 val (content, format) = result
                 android.util.Log.d("SubtitleManager", "找到字幕，格式: $format, 大小: ${content.length} 字节")
                 
-                // 解析字幕内容
                 val subtitleFormat = when (format.lowercase()) {
                     "srt" -> SubtitleFormat.SRT
                     "vtt" -> SubtitleFormat.VTT
@@ -298,18 +336,16 @@ class SubtitleManager(private val context: Context? = null) {
                     SubtitleFormat.TTML -> ttmlParser.parseTTML(content)
                 }
                 
-                // 创建虚拟字幕轨道
                 val track = SubtitleTrack(
                     name = "自动下载 - $format",
                     language = "zh-CN",
-                    url = "", // 已经下载完成，不需要URL
+                    url = "",
                     format = subtitleFormat
                 )
                 _selectedSubtitle.value = track
                 
                 android.util.Log.d("SubtitleManager", "成功加载 ${subtitleItems.size} 条字幕")
                 
-                // 打印前几条字幕用于调试
                 subtitleItems.take(3).forEach { item ->
                     android.util.Log.d("SubtitleManager", "字幕: ${item.startTimeMs}ms - ${item.endTimeMs}ms: ${item.text.take(50)}")
                 }
@@ -336,11 +372,10 @@ class SubtitleManager(private val context: Context? = null) {
     }
     
     /**
-     * 显示 Toast 提示（在主线程）
+     * 显示 Toast 提示
      */
     private fun showToast(message: String) {
         context?.let { ctx ->
-            // 确保在主线程显示 Toast
             android.os.Handler(android.os.Looper.getMainLooper()).post {
                 Toast.makeText(ctx, message, Toast.LENGTH_SHORT).show()
             }
@@ -354,4 +389,3 @@ class SubtitleManager(private val context: Context? = null) {
         _delayMs.value = delayMs
     }
 }
-

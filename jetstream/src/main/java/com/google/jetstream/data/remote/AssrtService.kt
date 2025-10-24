@@ -234,16 +234,19 @@ object AssrtService {
             // 2. 按优先级筛选和排序
             val prioritizedSubtitles = subtitles
                 .filter { sub ->
-                    // 必须有subtype且格式受支持
-                    sub.subtype.isNotBlank() && 
+                    // 必须有ID且有subtype且格式受支持
+                    val subtypeStr = sub.getSubtitleType()
+                    sub.getSubtitleId() != null &&
+                    !subtypeStr.isNullOrBlank() && 
                     SUPPORTED_FORMATS.any { format -> 
-                        sub.subtype.contains(format, ignoreCase = true) 
+                        subtypeStr.contains(format, ignoreCase = true)
                     }
                 }
                 .mapNotNull { sub ->
                     val lang = SubtitleLanguage.detect(sub.lang?.desc, sub.lang?.langlist)
-                    if (lang != null) {
-                        Triple(sub, lang, sub.uploadTime)
+                    val uploadTime = sub.getSubtitleUploadTime()
+                    if (lang != null && uploadTime != null) {
+                        Triple(sub, lang, uploadTime)
                     } else {
                         null
                     }
@@ -262,10 +265,11 @@ object AssrtService {
             
             // 3. 尝试下载第一个匹配的字幕
             for ((subtitle, language, _) in prioritizedSubtitles) {
-                Log.d(TAG, "尝试下载字幕 [ID:${subtitle.id}, 语言:${language.name}, 类型:${subtitle.subtype}]")
+                val subtitleId = subtitle.getSubtitleId() ?: continue
+                Log.d(TAG, "尝试下载字幕 [ID:${subtitleId}, 语言:${language.name}, 类型:${subtitle.getSubtitleType()}]")
                 
                 // 获取详情
-                val detail = getSubtitleDetail(subtitle.id)
+                val detail = getSubtitleDetail(subtitleId)
                 if (detail == null) {
                     Log.w(TAG, "获取字幕详情失败，尝试下一个")
                     continue
@@ -326,7 +330,7 @@ object AssrtService {
      * 检测字幕格式
      * 优先根据内容特征判断，文件名和API提示作为辅助
      */
-    private fun detectSubtitleFormat(content: String, fileName: String, subtypeHint: String): String {
+    private fun detectSubtitleFormat(content: String, fileName: String, subtypeHint: String?): String {
         val trimmed = content.trim()
         
         // 1. 根据内容特征判断（最可靠）
@@ -346,10 +350,12 @@ object AssrtService {
             }
         }
         
-        // 3. 根据API类型提示判断
-        for (format in SUPPORTED_FORMATS) {
-            if (subtypeHint.contains(format, ignoreCase = true)) {
-                return format
+        // 3. 根据API类型提示判断（如果提示不为空）
+        if (!subtypeHint.isNullOrBlank()) {
+            for (format in SUPPORTED_FORMATS) {
+                if (subtypeHint.contains(format, ignoreCase = true)) {
+                    return format
+                }
             }
         }
         

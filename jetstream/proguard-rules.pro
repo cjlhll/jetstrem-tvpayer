@@ -20,25 +20,21 @@
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
 
-# ========== GSYVideoPlayer ==========
--keep class com.shuyu.gsyvideoplayer.video.** { *; }
--dontwarn com.shuyu.gsyvideoplayer.video.**
--keep class com.shuyu.gsyvideoplayer.video.base.** { *; }
--dontwarn com.shuyu.gsyvideoplayer.video.base.**
--keep class com.shuyu.gsyvideoplayer.utils.** { *; }
--dontwarn com.shuyu.gsyvideoplayer.utils.**
--keep class com.shuyu.gsyvideoplayer.player.** {*;}
--dontwarn com.shuyu.gsyvideoplayer.player.**
+# ========== Media3 (ExoPlayer) ==========
+-keep class androidx.media3.** { *; }
+-keep interface androidx.media3.** { *; }
+-dontwarn androidx.media3.**
 
-# IJKPlayer (如果使用)
--keep class tv.danmaku.ijk.** { *; }
--dontwarn tv.danmaku.ijk.**
+# Keep ExoPlayer classes
+-keep class androidx.media3.exoplayer.** { *; }
+-keep class androidx.media3.common.** { *; }
+-keep class androidx.media3.datasource.** { *; }
+-keep class androidx.media3.extractor.** { *; }
+-keep class androidx.media3.decoder.** { *; }
+-keep class androidx.media3.ui.** { *; }
 
-# Media3
--keep class androidx.media3.** {*;}
--keep interface androidx.media3.**
-
--keep public class * extends android.view.View{
+# Keep custom views
+-keep public class * extends android.view.View {
     *** get*();
     void set*(***);
     public <init>(android.content.Context);

@@ -34,29 +34,27 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.unit.dp
+import androidx.media3.exoplayer.ExoPlayer
 import com.google.jetstream.data.entities.MovieDetails
 import com.google.jetstream.data.util.StringConstants
-import com.shuyu.gsyvideoplayer.GSYVideoManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 
 @Composable
 fun VideoPlayerControls(
-    player: Any?, // 不再使用，保留为 null
+    player: ExoPlayer?,
     movieDetails: MovieDetails,
     focusRequester: FocusRequester,
     onShowControls: () -> Unit = {},
     onClickSubtitles: () -> Unit = {},
     onClickAudio: () -> Unit = {}
 ) {
-    // 从 GSYVideoManager 获取播放状态
+    // 从 ExoPlayer 获取播放状态
     var isPlaying by remember { mutableStateOf(false) }
     
-    LaunchedEffect(Unit) {
+    LaunchedEffect(player) {
         while (isActive) {
-            try {
-                isPlaying = GSYVideoManager.instance().isPlaying
-            } catch (_: Throwable) {}
+            isPlaying = player?.isPlaying ?: false
             delay(500)
         }
     }
@@ -104,7 +102,7 @@ fun VideoPlayerControls(
         },
         seeker = {
             VideoPlayerSeeker(
-                player = null, // 改为 null，内部使用 GSYVideoManager
+                player = player,
                 focusRequester = focusRequester,
                 onShowControls = onShowControls,
             )

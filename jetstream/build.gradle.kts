@@ -146,12 +146,6 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
 
-    // GSYVideoPlayer
-    implementation(libs.gsyvideoplayer.java)
-    implementation(libs.gsyvideoplayer.exo2)
-    // 可选：IJK 内核（支持更多格式）
-    // implementation(libs.gsyvideoplayer.arm64)
-
     // Compose Previews
     debugImplementation(libs.androidx.compose.ui.tooling)
 

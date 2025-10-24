@@ -17,7 +17,6 @@
 package com.google.jetstream.presentation.screens.videoPlayer
 
 import android.view.KeyEvent
-import android.view.View
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
@@ -27,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -40,6 +40,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.google.jetstream.data.entities.MovieDetails
 import com.google.jetstream.presentation.common.Error
 import com.google.jetstream.presentation.common.Loading
@@ -49,20 +55,15 @@ import com.google.jetstream.presentation.screens.videoPlayer.components.VideoPla
 import com.google.jetstream.presentation.screens.videoPlayer.components.VideoPlayerPulse
 import com.google.jetstream.presentation.screens.videoPlayer.components.VideoPlayerPulse.Type.BACK
 import com.google.jetstream.presentation.screens.videoPlayer.components.VideoPlayerPulse.Type.FORWARD
+import androidx.media3.ui.PlayerView
 import com.google.jetstream.presentation.screens.videoPlayer.components.VideoPlayerPulseState
 import com.google.jetstream.presentation.screens.videoPlayer.components.VideoPlayerState
 import com.google.jetstream.presentation.screens.videoPlayer.components.rememberVideoPlayerPulseState
 import com.google.jetstream.presentation.screens.videoPlayer.components.rememberVideoPlayerState
-import com.google.jetstream.presentation.screens.videoPlayer.subtitle.EmbeddedSubtitleExtractor
 import com.google.jetstream.presentation.screens.videoPlayer.subtitle.SubtitleConfigDialog
-import com.google.jetstream.presentation.screens.videoPlayer.subtitle.SubtitleFormat
 import com.google.jetstream.presentation.screens.videoPlayer.subtitle.SubtitleManager
 import com.google.jetstream.presentation.screens.videoPlayer.subtitle.SubtitleOverlay
-import com.google.jetstream.presentation.screens.videoPlayer.subtitle.SubtitleTrack
 import com.google.jetstream.presentation.utils.handleDPadKeyEvents
-import com.shuyu.gsyvideoplayer.GSYVideoManager
-import com.shuyu.gsyvideoplayer.listener.GSYSampleCallBack
-import com.shuyu.gsyvideoplayer.video.StandardGSYVideoPlayer
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -86,7 +87,6 @@ fun VideoPlayerScreen(
 ) {
     val uiState by videoPlayerScreenViewModel.uiState.collectAsStateWithLifecycle()
 
-    // TODO: Handle Loading & Error states
     when (val s = uiState) {
         is VideoPlayerScreenUiState.Loading -> {
             Loading(modifier = Modifier.fillMaxSize())
@@ -105,23 +105,18 @@ fun VideoPlayerScreen(
                 onVideoStarted = {
                     // 当视频实际开始播放时，记录到最近观看
                     if (s.movieDetails.isTV && s.episodeId != null) {
-                        // 电视剧：保存剧集信息到最近观看
                         videoPlayerScreenViewModel.saveCurrentEpisodeProgress(
                             movieDetails = s.movieDetails,
                             episodeId = s.episodeId,
-                            currentPositionMs = 0L, // 刚开始播放
-                            durationMs = 0L // 开始时还不知道总时长
+                            currentPositionMs = 0L,
+                            durationMs = 0L
                         )
                     } else {
-                        // 电影：使用原有逻辑
                         videoPlayerScreenViewModel.addToRecentlyWatched(s.movieDetails)
                     }
                 },
                 onSaveProgress = { currentPositionMs, durationMs ->
-                    // 根据内容类型保存播放进度
                     if (s.movieDetails.isTV && s.episodeId != null) {
-                        // 电视剧：需要保存剧集信息
-                        // 从TvPlaybackService获取当前播放的剧集信息
                         videoPlayerScreenViewModel.saveCurrentEpisodeProgress(
                             movieDetails = s.movieDetails,
                             episodeId = s.episodeId,
@@ -129,7 +124,6 @@ fun VideoPlayerScreen(
                             durationMs = durationMs
                         )
                     } else {
-                        // 电影：使用原有逻辑
                         videoPlayerScreenViewModel.saveWatchProgress(s.movieDetails, currentPositionMs, durationMs)
                     }
                 }
@@ -142,37 +136,90 @@ fun VideoPlayerScreen(
 fun VideoPlayerScreenContent(
     movieDetails: MovieDetails,
     startPositionMs: Long? = null,
-    onBackPressed: () -> Unit, 
+    onBackPressed: () -> Unit,
     headers: Map<String, String>,
     onVideoStarted: () -> Unit = {},
     onSaveProgress: (currentPositionMs: Long, durationMs: Long) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    var gsyPlayer by remember { mutableStateOf<StandardGSYVideoPlayer?>(null) }
+
+    // 创建并记住 ExoPlayer 实例
+    val exoPlayer = remember {
+        // 创建支持自定义Headers的HttpDataSource工厂
+        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+            .setUserAgent("JetStream/1.0")
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(15000)
+            .setReadTimeoutMs(15000)
+            .setDefaultRequestProperties(headers)
+
+        // 创建MediaSource工厂
+        val mediaSourceFactory = DefaultMediaSourceFactory(context)
+            .setDataSourceFactory(httpDataSourceFactory)
+
+        // 创建ExoPlayer
+        ExoPlayer.Builder(context)
+            .setMediaSourceFactory(mediaSourceFactory)
+            .build().apply {
+                // 设置字幕选择参数
+                trackSelectionParameters = trackSelectionParameters
+                    .buildUpon()
+                    .setPreferredTextLanguage("zh")
+                    .setSelectUndeterminedTextLanguage(true)
+                    .build()
+            }
+    }
+
     var playerInitialized by remember { mutableStateOf(false) }
-    
-    // 固定使用 Media3 内核（已移除内核切换功能）
-    
+
     // 字幕管理器
     val subtitleManager = remember { SubtitleManager(context) }
     val currentSubtitle by subtitleManager.currentSubtitle
     val subtitleEnabled by subtitleManager.enabled
-    val subtitleDelay by subtitleManager.delayMs
     var showSubtitleConfig by remember { mutableStateOf(false) }
 
-    // 初始化字幕管理器
+    // 初始化字幕管理器和播放器
     LaunchedEffect(Unit) {
-        // 设置电影名称用于自动搜索字幕
         subtitleManager.setMovieName(movieDetails.name)
-        
-        // 开始字幕同步
-        subtitleManager.startSync(coroutineScope)
+        subtitleManager.startSync(coroutineScope, exoPlayer)
+
+        // 准备播放媒体
+        val mediaItem = MediaItem.Builder()
+            .setUri(movieDetails.videoUri)
+            .build()
+
+        exoPlayer.setMediaItem(mediaItem)
+        exoPlayer.prepare()
+
+        // 设置起始位置
+        if (startPositionMs != null && startPositionMs > 0) {
+            exoPlayer.seekTo(startPositionMs)
+            android.util.Log.d("VideoPlayer", "Setting start position: ${startPositionMs}ms")
+        }
+
+        // 添加播放器监听器
+        exoPlayer.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_READY && !playerInitialized) {
+                    playerInitialized = true
+                    onVideoStarted()
+                    android.util.Log.d("VideoPlayer", "Video prepared and ready")
+
+                    // 检测并设置内嵌字幕
+                    subtitleManager.detectEmbeddedSubtitles(exoPlayer)
+                }
+            }
+        })
+
+        // 开始播放
+        exoPlayer.playWhenReady = true
+        android.util.Log.d("VideoPlayer", "ExoPlayer initialized and started")
     }
-    
+
     // Hold-seek states
     val isHoldSeeking = remember { mutableStateOf(false) }
-    val holdSeekPreviewMs = remember { mutableStateOf(0L) }
+    val holdSeekPreviewMs = remember { mutableLongStateOf(0L) }
     val holdSeekDirection = remember { mutableStateOf(0) }
     var holdSeekJob by remember { mutableStateOf<Job?>(null) }
     var holdStarterJob by remember { mutableStateOf<Job?>(null) }
@@ -183,26 +230,23 @@ fun VideoPlayerScreenContent(
         if (holdSeekJob != null) return
         holdSeekDirection.value = direction
         isHoldSeeking.value = true
-        // 使用 GSYVideoManager API 获取当前位置
-        holdSeekPreviewMs.value = GSYVideoManager.instance().currentPosition
-        val duration = GSYVideoManager.instance().duration.coerceAtLeast(0L)
+        holdSeekPreviewMs.longValue = exoPlayer.currentPosition
+        val duration = exoPlayer.duration.coerceAtLeast(0L)
         holdSeekJob = coroutineScope.launch {
             val startAt = System.currentTimeMillis()
             val intervalMs = 220L
             while (isActive) {
                 val elapsed = System.currentTimeMillis() - startAt
-                // Accelerate step size based on hold duration (2x faster)
                 val stepMs = when {
                     elapsed < 1000L -> 6000L
                     elapsed < 3000L -> 14000L
                     elapsed < 6000L -> 24000L
                     else -> 40000L
                 }
-                val next = (holdSeekPreviewMs.value + direction * stepMs)
-                    .coerceIn(0L, if (duration > 0) duration else 0L)
-                holdSeekPreviewMs.value = next
-                // 使用 GSYVideoManager API 进行 seek
-                try { GSYVideoManager.instance().seekTo(next) } catch (_: Throwable) {}
+                val next = (holdSeekPreviewMs.longValue + direction * stepMs)
+                    .coerceIn(0L, if (duration > 0) duration else Long.MAX_VALUE)
+                holdSeekPreviewMs.longValue = next
+                exoPlayer.seekTo(next)
                 delay(intervalMs)
             }
         }
@@ -217,23 +261,22 @@ fun VideoPlayerScreenContent(
         holdSeekDirection.value = 0
     }
 
-    // 在离开页面或销毁时停止并释放播放器，避免后台继续播放
+    // 在离开页面或销毁时停止并释放播放器
     DisposableEffect(Unit) {
         onDispose {
             try {
-                // 停止字幕同步
                 subtitleManager.stopSync()
-                
-                // 使用 GSYVideoManager API 保存播放进度
-                val currentPosition = GSYVideoManager.instance().currentPosition
-                val duration = GSYVideoManager.instance().duration
+
+                val currentPosition = exoPlayer.currentPosition
+                val duration = exoPlayer.duration
                 if (currentPosition > 0 && duration > 0) {
                     onSaveProgress(currentPosition, duration)
                 }
-                
-                // 使用 GSYVideoManager API 释放播放器
-                GSYVideoManager.releaseAllVideos()
-            } catch (_: Throwable) {}
+
+                exoPlayer.release()
+            } catch (e: Exception) {
+                android.util.Log.e("VideoPlayer", "Error releasing player", e)
+            }
         }
     }
 
@@ -242,45 +285,35 @@ fun VideoPlayerScreenContent(
     DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
-                try {
-                    // 使用 GSYVideoManager 静态方法暂停
-                    GSYVideoManager.onPause()
-                } catch (_: Throwable) {}
+                exoPlayer.pause()
             } else if (event == androidx.lifecycle.Lifecycle.Event.ON_START) {
-                try {
-                    // 使用 GSYVideoManager 静态方法恢复
-                    GSYVideoManager.onResume()
-                } catch (_: Throwable) {}
+                exoPlayer.play()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    val videoPlayerState = rememberVideoPlayerState(
-        hideSeconds = 4,
-    )
+
+    val videoPlayerState = rememberVideoPlayerState(hideSeconds = 4)
 
     android.util.Log.i("VideoPlayer", "准备播放 URL: ${movieDetails.videoUri}, startPosition: ${startPositionMs}ms")
 
     BackHandler(onBack = {
-        // 若控制栏可见，先隐藏控制栏
         if (videoPlayerState.isControlsVisible) {
             videoPlayerState.hideControls()
             return@BackHandler
         }
 
-        // 控制栏已隐藏，则退出播放器
         try {
-            // 使用 GSYVideoManager API 保存播放进度
-            val currentPosition = GSYVideoManager.instance().currentPosition
-            val duration = GSYVideoManager.instance().duration
+            val currentPosition = exoPlayer.currentPosition
+            val duration = exoPlayer.duration
             if (currentPosition > 0 && duration > 0) {
                 onSaveProgress(currentPosition, duration)
             }
-            
-            // 使用 GSYVideoManager API 释放播放器
-            GSYVideoManager.releaseAllVideos()
-        } catch (_: Throwable) {}
+            exoPlayer.release()
+        } catch (e: Exception) {
+            android.util.Log.e("VideoPlayer", "Error on back", e)
+        }
         onBackPressed()
     })
 
@@ -301,11 +334,11 @@ fun VideoPlayerScreenContent(
                                         if (leftPressed && holdSeekJob == null) startHold(-1)
                                     }
                                 }
-                                // Don't consume to allow single-tap to be handled on ACTION_UP by dPadEvents
                                 return@onPreviewKeyEvent false
                             } else if (it.nativeKeyEvent.action == KeyEvent.ACTION_UP) {
                                 leftPressed = false
-                                holdStarterJob?.cancel(); holdStarterJob = null
+                                holdStarterJob?.cancel()
+                                holdStarterJob = null
                                 if (holdSeekJob != null) {
                                     stopHold()
                                     return@onPreviewKeyEvent true
@@ -325,7 +358,8 @@ fun VideoPlayerScreenContent(
                                 return@onPreviewKeyEvent false
                             } else if (it.nativeKeyEvent.action == KeyEvent.ACTION_UP) {
                                 rightPressed = false
-                                holdStarterJob?.cancel(); holdStarterJob = null
+                                holdStarterJob?.cancel()
+                                holdStarterJob = null
                                 if (holdSeekJob != null) {
                                     stopHold()
                                     return@onPreviewKeyEvent true
@@ -346,115 +380,34 @@ fun VideoPlayerScreenContent(
             }
             .dPadEvents(
                 videoPlayerState,
-                pulseState
+                pulseState,
+                exoPlayer
             )
             .focusable()
     ) {
-        // 使用 AndroidView 渲染 GSYVideoPlayer
-        // key 参数确保内核切换时重新创建 View
-        androidx.compose.runtime.key("media3") {
-            AndroidView(
-                factory = { ctx ->
-                    StandardGSYVideoPlayer(ctx).apply {
-                        // 准备 Headers Map
-                        val mapHeaders = hashMapOf<String, String>()
-                        headers.forEach { (k, v) -> mapHeaders[k] = v }
-                        
-                        android.util.Log.d("VideoPlayer", "Setting up GSY with headers: ${mapHeaders.keys}, core: Media3")
-                        
-                        // 设置视频 URL (url, cacheWithPlay, cachePath, mapHeadData, title)
-                        setUp(movieDetails.videoUri, true, null, mapHeaders, "")
-                        
-                        // 隐藏所有 GSY 自带的控制 UI（使用 Compose UI）
-                        try {
-                            titleTextView.visibility = View.GONE
-                            backButton.visibility = View.GONE
-                            fullscreenButton.visibility = View.GONE
-                            startButton.visibility = View.GONE
-                        } catch (_: Throwable) {}
-                        
-                        // 禁用触摸手势（TV 不需要）
-                        setIsTouchWiget(false)
-                        
-                        // 设置起始播放位置
-                        val startPos = startPositionMs ?: 0L
-                        
-                        if (startPos > 0) {
-                            seekOnStart = startPos
-                            android.util.Log.d("VideoPlayer", "Setting start position: ${startPos}ms")
-                        }
-                        
-                        // 设置回调监听
-                        setVideoAllCallBack(object : GSYSampleCallBack() {
-                            override fun onPrepared(url: String, vararg objects: Any) {
-                                super.onPrepared(url, *objects)
-                                android.util.Log.d("VideoPlayer", "Video prepared with core: Media3")
-                                
-                                // 检测并提取内嵌字幕
-                                if (EmbeddedSubtitleExtractor.mayHaveEmbeddedSubtitles(url)) {
-                                    android.util.Log.d("VideoPlayer", "视频可能包含内嵌字幕，开始提取")
-                                    coroutineScope.launch {
-                                        try {
-                                            val tracks = EmbeddedSubtitleExtractor.extractSubtitleTracks(this@apply)
-                                            if (tracks.isNotEmpty()) {
-                                                // 选择最佳字幕轨道
-                                                val bestTrack = EmbeddedSubtitleExtractor.selectBestSubtitle(tracks)
-                                                if (bestTrack != null) {
-                                                    android.util.Log.d("VideoPlayer", "选中内嵌字幕: ${bestTrack.label}")
-                                                    subtitleManager.markEmbeddedSubtitleDetected(bestTrack)
-                                                    
-                                                    // 配置 ExoPlayer 监听字幕数据
-                                                    setupEmbeddedSubtitleListener(this@apply, subtitleManager)
-                                                }
-                                            } else {
-                                                android.util.Log.d("VideoPlayer", "未发现内嵌字幕轨道")
-                                            }
-                                        } catch (e: Exception) {
-                                            android.util.Log.e("VideoPlayer", "提取内嵌字幕失败", e)
-                                        }
-                                    }
-                                }
-                                
-                                if (!playerInitialized) {
-                                    playerInitialized = true
-                                    onVideoStarted()
-                                }
-                            }
-                            
-                            override fun onPlayError(url: String, vararg objects: Any) {
-                                super.onPlayError(url, *objects)
-                                android.util.Log.e("VideoPlayer", "Play error: $url")
-                            }
-                        })
-                        
-                        // 保存播放器引用
-                        gsyPlayer = this
-                        
-                        // 开始播放
-                        startPlayLogic()
-                        android.util.Log.d("VideoPlayer", "GSYVideoPlayer initialized and started with core: Media3")
-                    }
-                },
-                modifier = Modifier.fillMaxSize(),
-                update = { player ->
-                    // 可以在这里更新播放器配置
+        // 使用 AndroidView 渲染 PlayerView
+        AndroidView(
+            factory = { ctx ->
+                PlayerView(ctx).apply {
+                    player = exoPlayer
+                    useController = false // 使用自定义控制器
+                    keepScreenOn = true
                 }
-            )
-        }
+            },
+            modifier = Modifier.fillMaxSize()
+        )
 
         val focusRequester = remember { FocusRequester() }
-        
-        // 轮询获取播放状态（从 GSYVideoManager）
+
+        // 轮询获取播放状态
         var isPlaying by remember { mutableStateOf(false) }
         LaunchedEffect(Unit) {
             while (isActive) {
-                try {
-                    isPlaying = GSYVideoManager.instance().isPlaying
-                } catch (_: Throwable) {}
+                isPlaying = exoPlayer.isPlaying
                 delay(500)
             }
         }
-        
+
         VideoPlayerOverlay(
             modifier = Modifier.align(Alignment.BottomCenter),
             focusRequester = focusRequester,
@@ -464,36 +417,36 @@ fun VideoPlayerScreenContent(
             showControls = { if (!isHoldSeeking.value) videoPlayerState.showControls(isPlaying) },
             controls = {
                 VideoPlayerControls(
-                    player = null, // 不再传递 ExoPlayer
+                    player = exoPlayer,
                     movieDetails = movieDetails,
                     focusRequester = focusRequester,
                     onShowControls = { videoPlayerState.showControls(isPlaying) },
-                    onClickSubtitles = { 
+                    onClickSubtitles = {
                         showSubtitleConfig = true
                     },
-                    onClickAudio = { 
+                    onClickAudio = {
                         // TODO: 实现音轨选择功能
                     }
                 )
             }
         )
-        
-        // 字幕显示层（内嵌字幕始终显示，不受控制栏影响）
+
+        // 字幕显示层
         if (currentSubtitle != null && subtitleEnabled) {
             SubtitleOverlay(
                 subtitle = currentSubtitle!!,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 18.dp)  // 更靠近底部
+                    .padding(bottom = 18.dp)
             )
         }
 
-        // Separate progress bar shown only while hold-seeking with hidden controls
+        // Hold-seek progress bar
         if (isHoldSeeking.value) {
-            val duration = try { GSYVideoManager.instance().duration } catch (_: Throwable) { 0L }
+            val duration = exoPlayer.duration
             HoldSeekProgressBar(
-                progress = if (duration > 0) holdSeekPreviewMs.value.toFloat() / duration.toFloat() else 0f,
-                currentPositionMs = holdSeekPreviewMs.value,
+                progress = if (duration > 0) holdSeekPreviewMs.longValue.toFloat() / duration.toFloat() else 0f,
+                currentPositionMs = holdSeekPreviewMs.longValue,
                 durationMs = duration,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -501,13 +454,13 @@ fun VideoPlayerScreenContent(
             )
         }
     }
-    
+
     // 字幕配置对话框
     if (showSubtitleConfig) {
         SubtitleConfigDialog(
             showDialog = showSubtitleConfig,
             enabled = subtitleEnabled,
-            delayMs = subtitleDelay,
+            delayMs = subtitleManager.delayMs.value,
             onDismiss = { showSubtitleConfig = false },
             onToggleEnabled = { enabled ->
                 subtitleManager.setEnabled(enabled, coroutineScope)
@@ -519,153 +472,30 @@ fun VideoPlayerScreenContent(
     }
 }
 
-
-/**
- * 配置内嵌字幕监听器
- * 通过 ExoPlayer 的 TextOutput 接收字幕数据，传递给我们的渲染系统
- */
-private fun setupEmbeddedSubtitleListener(
-    player: StandardGSYVideoPlayer,
-    subtitleManager: SubtitleManager
-) {
-    try {
-        // 从 GSYVideoManager 获取播放器管理器
-        val gsyVideoManager = GSYVideoManager.instance()
-        val playerManager = gsyVideoManager.player
-        
-        android.util.Log.d("VideoPlayer", "PlayerManager 类型: ${playerManager?.javaClass?.name}")
-        
-        // 从 Exo2PlayerManager 获取 ExoPlayer（两层反射）
-        val exoPlayer = try {
-            // 第一步：获取 IjkExo2MediaPlayer
-            val mediaPlayerField = playerManager?.javaClass?.getDeclaredField("mediaPlayer")
-            mediaPlayerField?.isAccessible = true
-            val ijkExo2MediaPlayer = mediaPlayerField?.get(playerManager)
-            
-            android.util.Log.d("VideoPlayer", "获取到 mediaPlayer: ${ijkExo2MediaPlayer?.javaClass?.name}")
-            
-            if (ijkExo2MediaPlayer != null) {
-                // 第二步：从 IjkExo2MediaPlayer 获取真正的 ExoPlayer
-                // 正确的字段名是 mInternalPlayer
-                try {
-                    val exoPlayerField = ijkExo2MediaPlayer.javaClass.getDeclaredField("mInternalPlayer")
-                    exoPlayerField.isAccessible = true
-                    exoPlayerField.get(ijkExo2MediaPlayer) as? androidx.media3.exoplayer.ExoPlayer
-                } catch (e: Exception) {
-                    android.util.Log.e("VideoPlayer", "获取 mInternalPlayer 失败: ${e.message}")
-                    null
-                }
-            } else {
-                null
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("VideoPlayer", "无法获取 ExoPlayer: ${e.message}")
-            null
-        }
-        
-        if (exoPlayer != null) {
-            android.util.Log.d("VideoPlayer", "成功获取 ExoPlayer: ${exoPlayer.javaClass.name}")
-            
-            // 启用字幕轨道（确保 ExoPlayer 选中字幕）
-            try {
-                val trackSelectionParameters = exoPlayer.trackSelectionParameters
-                    .buildUpon()
-                    .setPreferredTextLanguage("zh")  // 优先选择中文字幕
-                    .setSelectUndeterminedTextLanguage(true)  // 选择未确定语言的字幕
-                    .build()
-                exoPlayer.trackSelectionParameters = trackSelectionParameters
-                android.util.Log.d("VideoPlayer", "已启用字幕轨道选择")
-            } catch (e: Exception) {
-                android.util.Log.e("VideoPlayer", "设置轨道选择参数失败", e)
-            }
-            
-            // 添加字幕输出监听器
-            exoPlayer.addListener(object : androidx.media3.common.Player.Listener {
-                override fun onCues(cueGroup: androidx.media3.common.text.CueGroup) {
-                    super.onCues(cueGroup)
-                    
-                    // 处理字幕数据
-                    if (cueGroup.cues.isNotEmpty()) {
-                        // 合并所有字幕行
-                        val text = cueGroup.cues.joinToString("\n") { cue ->
-                            cue.text?.toString() ?: ""
-                        }
-                        
-                        if (text.isNotBlank()) {
-                            // 获取当前播放位置
-                            val currentPosition = exoPlayer.currentPosition
-                            
-                            // 使用 CueGroup 的时间戳（如果有）
-                            val startTime = if (cueGroup.presentationTimeUs != androidx.media3.common.C.TIME_UNSET) {
-                                cueGroup.presentationTimeUs / 1000 // 微秒转毫秒
-                            } else {
-                                currentPosition
-                            }
-                            
-                            // 估算结束时间（字幕通常显示2-5秒）
-                            // 根据文本长度动态调整
-                            val duration = when {
-                                text.length < 20 -> 2000L
-                                text.length < 50 -> 3000L
-                                text.length < 100 -> 4000L
-                                else -> 5000L
-                            }
-                            val endTime = startTime + duration
-                            
-                            android.util.Log.d("EmbeddedSubtitle", "字幕: $text, 时间: ${startTime}ms-${endTime}ms")
-                            
-                            // 更新字幕管理器
-                            subtitleManager.updateEmbeddedSubtitle(text, startTime, endTime)
-                        }
-                    }
-                    // 注意：不要在 cues 为空时清除字幕，让它自然超时
-                    // ExoPlayer 会在字幕结束时发送空的 cueGroup，但我们希望字幕保持显示直到时间到
-                }
-            })
-            
-            android.util.Log.d("VideoPlayer", "内嵌字幕监听器已配置，字幕已自动启用")
-        } else {
-            android.util.Log.w("VideoPlayer", "无法获取 ExoPlayer 实例")
-        }
-    } catch (e: Exception) {
-        android.util.Log.e("VideoPlayer", "配置内嵌字幕监听器失败", e)
-    }
-}
-
 private fun Modifier.dPadEvents(
     videoPlayerState: VideoPlayerState,
-    pulseState: VideoPlayerPulseState
+    pulseState: VideoPlayerPulseState,
+    player: ExoPlayer
 ): Modifier = this.handleDPadKeyEvents(
     onLeft = {
         if (!videoPlayerState.isControlsVisible) {
-            // 使用 GSYVideoManager API 后退10秒
-            try {
-                val currentPos = GSYVideoManager.instance().currentPosition
-                GSYVideoManager.instance().seekTo((currentPos - 10000).coerceAtLeast(0))
-            } catch (_: Throwable) {}
+            val currentPos = player.currentPosition
+            player.seekTo((currentPos - 10000).coerceAtLeast(0))
             pulseState.setType(BACK)
         }
     },
     onRight = {
         if (!videoPlayerState.isControlsVisible) {
-            // 使用 GSYVideoManager API 前进10秒
-            try {
-                val currentPos = GSYVideoManager.instance().currentPosition
-                val duration = GSYVideoManager.instance().duration
-                GSYVideoManager.instance().seekTo((currentPos + 10000).coerceAtMost(duration))
-            } catch (_: Throwable) {}
+            val currentPos = player.currentPosition
+            val duration = player.duration
+            player.seekTo((currentPos + 10000).coerceAtMost(if (duration != C.TIME_UNSET) duration else Long.MAX_VALUE))
             pulseState.setType(FORWARD)
         }
     },
     onUp = { videoPlayerState.showControls() },
     onDown = { videoPlayerState.showControls() },
     onEnter = {
-        // 使用 GSYVideoManager API 暂停
-        try {
-            GSYVideoManager.instance().pause()
-        } catch (_: Throwable) {}
+        player.pause()
         videoPlayerState.showControls()
     }
 )
-
-
