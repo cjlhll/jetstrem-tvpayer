@@ -16,43 +16,34 @@
 
 package com.google.jetstream.presentation.screens.videoPlayer
 
-import android.net.Uri
+import android.view.KeyEvent
+import android.view.View
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.padding
-import com.google.jetstream.data.webdav.WebDavService
-import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.media3.common.C
-import androidx.media3.common.MediaItem
-import androidx.media3.common.MimeTypes
-import androidx.media3.common.TrackSelectionOverride
-import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.compose.PlayerSurface
-import androidx.media3.ui.compose.SURFACE_TYPE_SURFACE_VIEW
-import androidx.media3.ui.compose.modifiers.resizeWithContentScale
-import com.google.jetstream.data.entities.Movie
 import com.google.jetstream.data.entities.MovieDetails
 import com.google.jetstream.presentation.common.Error
 import com.google.jetstream.presentation.common.Loading
+import com.google.jetstream.presentation.screens.videoPlayer.components.HoldSeekProgressBar
 import com.google.jetstream.presentation.screens.videoPlayer.components.VideoPlayerControls
 import com.google.jetstream.presentation.screens.videoPlayer.components.VideoPlayerOverlay
 import com.google.jetstream.presentation.screens.videoPlayer.components.VideoPlayerPulse
@@ -60,12 +51,12 @@ import com.google.jetstream.presentation.screens.videoPlayer.components.VideoPla
 import com.google.jetstream.presentation.screens.videoPlayer.components.VideoPlayerPulse.Type.FORWARD
 import com.google.jetstream.presentation.screens.videoPlayer.components.VideoPlayerPulseState
 import com.google.jetstream.presentation.screens.videoPlayer.components.VideoPlayerState
-import com.google.jetstream.presentation.screens.videoPlayer.components.rememberPlayer
-import com.google.jetstream.presentation.screens.videoPlayer.components.HoldSeekProgressBar
 import com.google.jetstream.presentation.screens.videoPlayer.components.rememberVideoPlayerPulseState
 import com.google.jetstream.presentation.screens.videoPlayer.components.rememberVideoPlayerState
 import com.google.jetstream.presentation.utils.handleDPadKeyEvents
-import android.view.KeyEvent
+import com.shuyu.gsyvideoplayer.GSYVideoManager
+import com.shuyu.gsyvideoplayer.listener.GSYSampleCallBack
+import com.shuyu.gsyvideoplayer.video.StandardGSYVideoPlayer
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -141,7 +132,6 @@ fun VideoPlayerScreen(
     }
 }
 
-@androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 fun VideoPlayerScreenContent(
     movieDetails: MovieDetails,
@@ -152,11 +142,12 @@ fun VideoPlayerScreenContent(
     onSaveProgress: (currentPositionMs: Long, durationMs: Long) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
-    // 优先用 SurfaceView 以保证 HDR/色彩路径
-
-    val exoPlayer = rememberPlayer(context, headers)
-
+    var gsyPlayer by remember { mutableStateOf<StandardGSYVideoPlayer?>(null) }
     var playerInitialized by remember { mutableStateOf(false) }
+    
+    // 内核状态管理
+    var currentCore by remember { mutableStateOf(PlayerCore.MEDIA3) }
+    var savedPositionForCoreSwitch by remember { mutableStateOf(0L) }
 
     // Hold-seek states
     val isHoldSeeking = remember { mutableStateOf(false) }
@@ -172,8 +163,9 @@ fun VideoPlayerScreenContent(
         if (holdSeekJob != null) return
         holdSeekDirection.value = direction
         isHoldSeeking.value = true
-        holdSeekPreviewMs.value = exoPlayer.currentPosition
-        val duration = exoPlayer.duration.coerceAtLeast(0L)
+        // 使用 GSYVideoManager API 获取当前位置
+        holdSeekPreviewMs.value = GSYVideoManager.instance().currentPosition
+        val duration = GSYVideoManager.instance().duration.coerceAtLeast(0L)
         holdSeekJob = coroutineScope.launch {
             val startAt = System.currentTimeMillis()
             val intervalMs = 220L
@@ -189,7 +181,8 @@ fun VideoPlayerScreenContent(
                 val next = (holdSeekPreviewMs.value + direction * stepMs)
                     .coerceIn(0L, if (duration > 0) duration else 0L)
                 holdSeekPreviewMs.value = next
-                try { exoPlayer.seekTo(next) } catch (_: Throwable) {}
+                // 使用 GSYVideoManager API 进行 seek
+                try { GSYVideoManager.instance().seekTo(next) } catch (_: Throwable) {}
                 delay(intervalMs)
             }
         }
@@ -205,32 +198,35 @@ fun VideoPlayerScreenContent(
     }
 
     // 在离开页面或销毁时停止并释放播放器，避免后台继续播放
-    androidx.compose.runtime.DisposableEffect(exoPlayer) {
+    DisposableEffect(Unit) {
         onDispose {
             try {
-                // 保存播放进度
-                val currentPosition = exoPlayer.currentPosition
-                val duration = exoPlayer.duration
+                // 使用 GSYVideoManager API 保存播放进度
+                val currentPosition = GSYVideoManager.instance().currentPosition
+                val duration = GSYVideoManager.instance().duration
                 if (currentPosition > 0 && duration > 0) {
                     onSaveProgress(currentPosition, duration)
                 }
                 
-                exoPlayer.playWhenReady = false
-                exoPlayer.stop()
-                exoPlayer.clearMediaItems()
+                // 使用 GSYVideoManager API 释放播放器
+                GSYVideoManager.releaseAllVideos()
             } catch (_: Throwable) {}
-            try { exoPlayer.release() } catch (_: Throwable) {}
         }
     }
 
     // 当应用进入后台时暂停播放
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
-    androidx.compose.runtime.DisposableEffect(lifecycleOwner, exoPlayer) {
+    DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
                 try {
-                    exoPlayer.playWhenReady = false
-                    exoPlayer.pause()
+                    // 使用 GSYVideoManager 静态方法暂停
+                    GSYVideoManager.onPause()
+                } catch (_: Throwable) {}
+            } else if (event == androidx.lifecycle.Lifecycle.Event.ON_START) {
+                try {
+                    // 使用 GSYVideoManager 静态方法恢复
+                    GSYVideoManager.onResume()
                 } catch (_: Throwable) {}
             }
         }
@@ -242,44 +238,6 @@ fun VideoPlayerScreenContent(
     )
 
     android.util.Log.i("VideoPlayer", "准备播放 URL: ${movieDetails.videoUri}, startPosition: ${startPositionMs}ms")
-    
-    LaunchedEffect(exoPlayer, movieDetails, startPositionMs) {
-        if (!playerInitialized) {
-            val keepPositionMs = startPositionMs ?: 0L
-            val mediaItem = MediaItem.Builder().setUri(movieDetails.videoUri).build()
-            exoPlayer.setMediaItem(mediaItem)
-            exoPlayer.prepare()
-            try {
-                if (keepPositionMs > 0) {
-                    exoPlayer.seekTo(keepPositionMs)
-                    android.util.Log.d("VideoPlayer", "Seeking to position: ${keepPositionMs}ms")
-                }
-                exoPlayer.playWhenReady = true
-            } catch (_: Throwable) {}
-            playerInitialized = true
-            android.util.Log.d("VideoPlayer", "Video started")
-        }
-    }
-    
-    // 监听播放状态，当开始播放时记录到最近观看
-    androidx.compose.runtime.DisposableEffect(exoPlayer) {
-        var hasStartedPlaying = false
-        val listener = object : androidx.media3.common.Player.Listener {
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == androidx.media3.common.Player.STATE_READY && exoPlayer.playWhenReady && !hasStartedPlaying) {
-                    hasStartedPlaying = true
-                    onVideoStarted()
-                    android.util.Log.d("VideoPlayer", "Video started playing, adding to recently watched")
-                }
-            }
-        }
-        exoPlayer.addListener(listener)
-        onDispose {
-            try {
-                exoPlayer.removeListener(listener)
-            } catch (_: Throwable) {}
-        }
-    }
 
     BackHandler(onBack = {
         // 若控制栏可见，先隐藏控制栏
@@ -290,16 +248,15 @@ fun VideoPlayerScreenContent(
 
         // 控制栏已隐藏，则退出播放器
         try {
-            // 保存播放进度
-            val currentPosition = exoPlayer.currentPosition
-            val duration = exoPlayer.duration
+            // 使用 GSYVideoManager API 保存播放进度
+            val currentPosition = GSYVideoManager.instance().currentPosition
+            val duration = GSYVideoManager.instance().duration
             if (currentPosition > 0 && duration > 0) {
                 onSaveProgress(currentPosition, duration)
             }
             
-            exoPlayer.playWhenReady = false
-            exoPlayer.stop()
-            exoPlayer.clearMediaItems()
+            // 使用 GSYVideoManager API 释放播放器
+            GSYVideoManager.releaseAllVideos()
         } catch (_: Throwable) {}
         onBackPressed()
     })
@@ -365,37 +322,142 @@ fun VideoPlayerScreenContent(
                 false
             }
             .dPadEvents(
-                exoPlayer,
                 videoPlayerState,
                 pulseState
             )
             .focusable()
     ) {
-        PlayerSurface(
-            player = exoPlayer,
-            surfaceType = SURFACE_TYPE_SURFACE_VIEW,
-            modifier = Modifier.resizeWithContentScale(
-                contentScale = ContentScale.Fit,
-                sourceSizeDp = null
-                // 如果设备不支持 HDR，会由系统进行 HDR->SDR 映射；SurfaceView 更能避免 TextureView 颜色空间剪裁导致的发黑问题
-
+        // 使用 AndroidView 渲染 GSYVideoPlayer
+        // key 参数确保内核切换时重新创建 View
+        androidx.compose.runtime.key(currentCore) {
+            AndroidView(
+                factory = { ctx ->
+                    StandardGSYVideoPlayer(ctx).apply {
+                        // 准备 Headers Map
+                        val mapHeaders = hashMapOf<String, String>()
+                        headers.forEach { (k, v) -> mapHeaders[k] = v }
+                        
+                        android.util.Log.d("VideoPlayer", "Setting up GSY with headers: ${mapHeaders.keys}, core: $currentCore")
+                        
+                        // 设置视频 URL (url, cacheWithPlay, cachePath, mapHeadData, title)
+                        setUp(movieDetails.videoUri, true, null, mapHeaders, "")
+                        
+                        // 隐藏所有 GSY 自带的控制 UI（使用 Compose UI）
+                        try {
+                            titleTextView.visibility = View.GONE
+                            backButton.visibility = View.GONE
+                            fullscreenButton.visibility = View.GONE
+                            startButton.visibility = View.GONE
+                        } catch (_: Throwable) {}
+                        
+                        // 禁用触摸手势（TV 不需要）
+                        setIsTouchWiget(false)
+                        
+                        // 设置起始播放位置（考虑内核切换时的保存位置）
+                        val startPos = if (savedPositionForCoreSwitch > 0) {
+                            savedPositionForCoreSwitch
+                        } else {
+                            startPositionMs ?: 0L
+                        }
+                        
+                        if (startPos > 0) {
+                            seekOnStart = startPos
+                            android.util.Log.d("VideoPlayer", "Setting start position: ${startPos}ms")
+                        }
+                        
+                        // 设置回调监听
+                        setVideoAllCallBack(object : GSYSampleCallBack() {
+                            override fun onPrepared(url: String, vararg objects: Any) {
+                                super.onPrepared(url, *objects)
+                                android.util.Log.d("VideoPlayer", "Video prepared with core: $currentCore")
+                                if (!playerInitialized) {
+                                    playerInitialized = true
+                                    onVideoStarted()
+                                }
+                                // 清除保存的位置
+                                savedPositionForCoreSwitch = 0L
+                            }
+                            
+                            override fun onPlayError(url: String, vararg objects: Any) {
+                                super.onPlayError(url, *objects)
+                                android.util.Log.e("VideoPlayer", "Play error: $url")
+                            }
+                        })
+                        
+                        // 保存播放器引用
+                        gsyPlayer = this
+                        
+                        // 开始播放
+                        startPlayLogic()
+                        android.util.Log.d("VideoPlayer", "GSYVideoPlayer initialized and started with core: $currentCore")
+                    }
+                },
+                modifier = Modifier.fillMaxSize(),
+                update = { player ->
+                    // 可以在这里更新播放器配置
+                }
             )
-        )
+        }
 
         val focusRequester = remember { FocusRequester() }
+        
+        // 轮询获取播放状态（从 GSYVideoManager）
+        var isPlaying by remember { mutableStateOf(false) }
+        LaunchedEffect(Unit) {
+            while (isActive) {
+                try {
+                    isPlaying = GSYVideoManager.instance().isPlaying
+                } catch (_: Throwable) {}
+                delay(500)
+            }
+        }
+        
         VideoPlayerOverlay(
             modifier = Modifier.align(Alignment.BottomCenter),
             focusRequester = focusRequester,
-            isPlaying = exoPlayer.isPlaying,
+            isPlaying = isPlaying,
             isControlsVisible = videoPlayerState.isControlsVisible,
             centerButton = { VideoPlayerPulse(pulseState) },
-            showControls = { if (!isHoldSeeking.value) videoPlayerState.showControls(exoPlayer.isPlaying) },
+            showControls = { if (!isHoldSeeking.value) videoPlayerState.showControls(isPlaying) },
             controls = {
                 VideoPlayerControls(
-                    player = exoPlayer,
+                    player = null, // 不再传递 ExoPlayer
                     movieDetails = movieDetails,
                     focusRequester = focusRequester,
-                    onShowControls = { videoPlayerState.showControls(exoPlayer.isPlaying) },
+                    currentCore = currentCore,
+                    onSwitchCore = { newCore ->
+                        if (newCore != currentCore) {
+                            android.util.Log.i("VideoPlayer", "开始切换内核: $currentCore -> $newCore")
+                            
+                            // 保存当前播放位置
+                            savedPositionForCoreSwitch = try {
+                                val pos = GSYVideoManager.instance().currentPosition
+                                android.util.Log.i("VideoPlayer", "保存播放位置: ${pos}ms")
+                                pos
+                            } catch (e: Throwable) {
+                                android.util.Log.e("VideoPlayer", "获取播放位置失败", e)
+                                0L
+                            }
+                            
+                            // 先释放当前播放器
+                            try {
+                                GSYVideoManager.releaseAllVideos()
+                                android.util.Log.d("VideoPlayer", "已释放旧播放器")
+                            } catch (e: Throwable) {
+                                android.util.Log.e("VideoPlayer", "释放播放器失败", e)
+                            }
+                            
+                            // 切换内核
+                            switchPlayerCore(context, newCore)
+                            
+                            // 更新当前内核（这将触发 AndroidView 重组）
+                            currentCore = newCore
+                            playerInitialized = false // 重置初始化标记
+                            
+                            android.util.Log.i("VideoPlayer", "内核切换完成: $newCore, 将从 ${savedPositionForCoreSwitch}ms 继续播放")
+                        }
+                    },
+                    onShowControls = { videoPlayerState.showControls(isPlaying) },
                     onClickSubtitles = { 
                         // TODO: 实现字幕选择功能
                     },
@@ -408,10 +470,11 @@ fun VideoPlayerScreenContent(
 
         // Separate progress bar shown only while hold-seeking with hidden controls
         if (isHoldSeeking.value) {
+            val duration = try { GSYVideoManager.instance().duration } catch (_: Throwable) { 0L }
             HoldSeekProgressBar(
-                progress = if (exoPlayer.duration > 0) holdSeekPreviewMs.value.toFloat() / exoPlayer.duration.toFloat() else 0f,
+                progress = if (duration > 0) holdSeekPreviewMs.value.toFloat() / duration.toFloat() else 0f,
                 currentPositionMs = holdSeekPreviewMs.value,
-                durationMs = exoPlayer.duration,
+                durationMs = duration,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 96.dp)
@@ -421,35 +484,83 @@ fun VideoPlayerScreenContent(
     }
 }
 
+/**
+ * 切换播放器内核
+ */
+private fun switchPlayerCore(context: android.content.Context, core: PlayerCore) {
+    try {
+        // 先释放当前播放器
+        GSYVideoManager.releaseAllVideos()
+        
+        // 根据选择的内核切换
+        when (core) {
+            PlayerCore.MEDIA3 -> {
+                // 切换到 ExoPlayer 内核
+                com.shuyu.gsyvideoplayer.player.PlayerFactory.setPlayManager(
+                    tv.danmaku.ijk.media.exo2.Exo2PlayerManager::class.java
+                )
+                // 使用 ExoPlayerCacheManager（支持 m3u8）
+                com.shuyu.gsyvideoplayer.cache.CacheFactory.setCacheManager(
+                    tv.danmaku.ijk.media.exo2.ExoPlayerCacheManager::class.java
+                )
+                android.util.Log.i("VideoPlayer", "切换到 Media3 (ExoPlayer) 内核 + ExoPlayerCacheManager")
+            }
+            PlayerCore.IJK -> {
+                // TODO: 需要添加 IJK 依赖后才能使用
+                android.util.Log.w("VideoPlayer", "IJK 内核未启用，请添加依赖")
+                android.widget.Toast.makeText(context, "IJK 内核未启用", android.widget.Toast.LENGTH_SHORT).show()
+            }
+            PlayerCore.SYSTEM -> {
+                // 切换到系统播放器内核
+                com.shuyu.gsyvideoplayer.player.PlayerFactory.setPlayManager(
+                    com.shuyu.gsyvideoplayer.player.SystemPlayerManager::class.java
+                )
+                // 系统播放器不支持 ExoPlayerCacheManager，切换为 ProxyCacheManager
+                com.shuyu.gsyvideoplayer.cache.CacheFactory.setCacheManager(
+                    com.shuyu.gsyvideoplayer.cache.ProxyCacheManager::class.java
+                )
+                android.util.Log.i("VideoPlayer", "切换到系统播放器内核 + ProxyCacheManager")
+            }
+        }
+    } catch (e: Exception) {
+        android.util.Log.e("VideoPlayer", "切换内核失败", e)
+    }
+}
+
 private fun Modifier.dPadEvents(
-    exoPlayer: ExoPlayer,
     videoPlayerState: VideoPlayerState,
     pulseState: VideoPlayerPulseState
 ): Modifier = this.handleDPadKeyEvents(
     onLeft = {
         if (!videoPlayerState.isControlsVisible) {
-            exoPlayer.seekBack()
+            // 使用 GSYVideoManager API 后退10秒
+            try {
+                val currentPos = GSYVideoManager.instance().currentPosition
+                GSYVideoManager.instance().seekTo((currentPos - 10000).coerceAtLeast(0))
+            } catch (_: Throwable) {}
             pulseState.setType(BACK)
         }
     },
     onRight = {
         if (!videoPlayerState.isControlsVisible) {
-            exoPlayer.seekForward()
+            // 使用 GSYVideoManager API 前进10秒
+            try {
+                val currentPos = GSYVideoManager.instance().currentPosition
+                val duration = GSYVideoManager.instance().duration
+                GSYVideoManager.instance().seekTo((currentPos + 10000).coerceAtMost(duration))
+            } catch (_: Throwable) {}
             pulseState.setType(FORWARD)
         }
     },
     onUp = { videoPlayerState.showControls() },
     onDown = { videoPlayerState.showControls() },
     onEnter = {
-        exoPlayer.pause()
+        // 使用 GSYVideoManager API 暂停
+        try {
+            GSYVideoManager.instance().pause()
+        } catch (_: Throwable) {}
         videoPlayerState.showControls()
     }
 )
-
-private fun Movie.intoMediaItem(): MediaItem {
-    return MediaItem.Builder()
-        .setUri(videoUri)
-        .build()
-}
 
 

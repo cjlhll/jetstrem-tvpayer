@@ -23,6 +23,7 @@ uiautomator = "2.4.0-alpha01"
 rules = "1.6.1"
 sardine-android = "0.9"
 room = "2.7.0-alpha12"
+gsyvideoplayer = "11.1.0"
 
 [libraries]
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity-compose" }
@@ -54,6 +55,9 @@ sardine-android = { module = "com.github.thegrizzlylabs:sardine-android", versio
 androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 androidx-room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
+gsyvideoplayer-java = { module = "io.github.carguo:gsyvideoplayer-java", version.ref = "gsyvideoplayer" }
+gsyvideoplayer-exo2 = { module = "io.github.carguo:gsyvideoplayer-exo2", version.ref = "gsyvideoplayer" }
+gsyvideoplayer-arm64 = { module = "io.github.carguo:gsyvideoplayer-arm64", version.ref = "gsyvideoplayer" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "android-gradle-plugin" }

@@ -16,7 +16,6 @@
 
 package com.google.jetstream.presentation.screens.videoPlayer.components
 
-import androidx.annotation.OptIn
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
@@ -25,43 +24,51 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.media3.common.Player
-import androidx.media3.common.util.UnstableApi
-import androidx.media3.ui.compose.state.PlayPauseButtonState
-import androidx.media3.ui.compose.state.rememberPlayPauseButtonState
 import com.google.jetstream.data.util.StringConstants
+import com.shuyu.gsyvideoplayer.GSYVideoManager
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 
-@OptIn(UnstableApi::class)
 @Composable
 fun VideoPlayerSeeker(
-    player: Player,
+    player: Any?, // 不再使用 Player，改为使用 GSYVideoManager
     focusRequester: FocusRequester,
     modifier: Modifier = Modifier,
-    state: PlayPauseButtonState = rememberPlayPauseButtonState(player),
-    onSeek: (Float) -> Unit = {
-        player.seekTo(player.duration.times(it).toLong())
-    },
     onShowControls: () -> Unit = {},
 ) {
-    val contentDuration = player.contentDuration.milliseconds
-
-    var currentPositionMs by remember(player) { mutableLongStateOf(0L) }
-    val currentPosition = currentPositionMs.milliseconds
-
-    // TODO: Update in a more thoughtful manner
+    // 从 GSYVideoManager 获取播放状态和进度
+    var currentPositionMs by remember { mutableLongStateOf(0L) }
+    var durationMs by remember { mutableLongStateOf(0L) }
+    var isPlaying by remember { mutableStateOf(false) }
+    
     LaunchedEffect(Unit) {
-        while (true) {
+        while (isActive) {
+            try {
+                currentPositionMs = GSYVideoManager.instance().currentPosition
+                durationMs = GSYVideoManager.instance().duration
+                isPlaying = GSYVideoManager.instance().isPlaying
+            } catch (_: Throwable) {}
             delay(300)
-            currentPositionMs = player.currentPosition
         }
+    }
+    
+    val contentDuration = durationMs.milliseconds
+    val currentPosition = currentPositionMs.milliseconds
+    
+    // Seek 回调
+    val onSeek: (Float) -> Unit = { progress ->
+        try {
+            val targetPos = (durationMs * progress).toLong()
+            GSYVideoManager.instance().seekTo(targetPos)
+        } catch (_: Throwable) {}
     }
 
     val contentProgressString =
@@ -87,16 +94,25 @@ fun VideoPlayerSeeker(
     ) {
         VideoPlayerControlsIcon(
             modifier = Modifier.focusRequester(focusRequester),
-            icon = if (state.showPlay) Icons.Default.PlayArrow else Icons.Default.Pause,
-            onClick = state::onClick,
-            isPlaying = player.isPlaying,
+            icon = if (!isPlaying) Icons.Default.PlayArrow else Icons.Default.Pause,
+            onClick = {
+                // 使用 GSYVideoManager API 控制播放/暂停
+                try {
+                    if (isPlaying) {
+                        GSYVideoManager.instance().pause()
+                    } else {
+                        GSYVideoManager.instance().start()
+                    }
+                } catch (_: Throwable) {}
+            },
+            isPlaying = isPlaying,
             contentDescription = StringConstants
                 .Composable
                 .VideoPlayerControlPlayPauseButton
         )
         VideoPlayerControllerText(text = contentProgressString)
         VideoPlayerControllerIndicator(
-            progress = (currentPosition / contentDuration).toFloat(),
+            progress = if (durationMs > 0) (currentPosition / contentDuration).toFloat() else 0f,
             onSeek = onSeek,
             onShowControls = onShowControls
         )
