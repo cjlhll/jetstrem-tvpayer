@@ -162,32 +162,13 @@ fun VideoPlayerScreenContent(
     val subtitleDelay by subtitleManager.delayMs
     var showSubtitleConfig by remember { mutableStateOf(false) }
 
-    // 设置测试字幕（不自动加载）
+    // 初始化字幕管理器
     LaunchedEffect(Unit) {
-        val testSubtitles = listOf(
-            SubtitleTrack(
-                name = "测试字幕",
-                url = "https://raw.githubusercontent.com/cjlhll/openclash-rules/refs/heads/main/test.vtt",
-                language = "zh",
-                format = SubtitleFormat.VTT
-            )
-        )
-        subtitleManager.setAvailableSubtitles(testSubtitles)
+        // 设置电影名称用于自动搜索字幕
+        subtitleManager.setMovieName(movieDetails.name)
         
         // 开始字幕同步
         subtitleManager.startSync(coroutineScope)
-    }
-    
-    // 监听字幕开关状态，开启时自动加载字幕
-    LaunchedEffect(subtitleEnabled) {
-        if (subtitleEnabled) {
-            // 如果开启字幕且还没有加载，则加载第一个可用字幕
-            val availableSubtitles = subtitleManager.availableSubtitles.value
-            if (subtitleManager.selectedSubtitle.value == null && availableSubtitles.isNotEmpty()) {
-                android.util.Log.d("VideoPlayer", "Subtitle enabled, loading first subtitle")
-                subtitleManager.loadSubtitle(availableSubtitles.first())
-            }
-        }
     }
     
     // Hold-seek states
@@ -543,7 +524,7 @@ fun VideoPlayerScreenContent(
             delayMs = subtitleDelay,
             onDismiss = { showSubtitleConfig = false },
             onToggleEnabled = { enabled ->
-                subtitleManager.setEnabled(enabled)
+                subtitleManager.setEnabled(enabled, coroutineScope)
             },
             onDelayChanged = { newDelay ->
                 subtitleManager.setDelay(newDelay)

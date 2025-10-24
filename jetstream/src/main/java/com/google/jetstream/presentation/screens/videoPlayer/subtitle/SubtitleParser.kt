@@ -199,6 +199,14 @@ class ASSSubtitleParser {
         // Dialogue: 0,0:00:10.50,0:00:13.00,Default,,0,0,0,,字幕文本
         
         val lines = content.lines()
+        
+        // 打印前10行用于调试
+        android.util.Log.d("ASSParser", "ASS 文件总行数: ${lines.size}")
+        android.util.Log.d("ASSParser", "ASS 文件前10行:")
+        lines.take(10).forEachIndexed { index, line ->
+            android.util.Log.d("ASSParser", "  [$index] $line")
+        }
+        
         var inEventsSection = false
         var formatIndices = mapOf<String, Int>()
         
@@ -225,6 +233,7 @@ class ASSSubtitleParser {
                 val formatLine = trimmedLine.substring(7).trim()
                 val fields = formatLine.split(",").map { it.trim() }
                 formatIndices = fields.withIndex().associate { it.value to it.index }
+                android.util.Log.d("ASSParser", "Format 字段: $formatIndices")
                 continue
             }
             
@@ -232,27 +241,44 @@ class ASSSubtitleParser {
             if (trimmedLine.startsWith("Dialogue:", ignoreCase = true)) {
                 try {
                     val dialogueLine = trimmedLine.substring(9).trim()
-                    val parts = dialogueLine.split(",", limit = formatIndices.size)
+                    // 使用10作为最大分割数（Format字段通常不会超过10个，Text之后的逗号需要保留）
+                    val parts = dialogueLine.split(",", limit = 10)
                     
-                    if (parts.size < formatIndices.size) continue
+                    if (formatIndices.isEmpty()) {
+                        android.util.Log.w("ASSParser", "Format 未定义，跳过 Dialogue 行")
+                        continue
+                    }
                     
-                    val startIdx = formatIndices["Start"] ?: continue
-                    val endIdx = formatIndices["End"] ?: continue
-                    val textIdx = formatIndices["Text"] ?: continue
+                    // 支持多种可能的字段名（大小写敏感）
+                    val startIdx = findFieldIndex(formatIndices, "Start", "start")
+                    val endIdx = findFieldIndex(formatIndices, "End", "end")
+                    val textIdx = findFieldIndex(formatIndices, "Text", "text")
+                    
+                    if (startIdx == null || endIdx == null || textIdx == null) {
+                        android.util.Log.w("ASSParser", "缺少必要字段 Start=$startIdx, End=$endIdx, Text=$textIdx, 可用字段: ${formatIndices.keys}")
+                        continue
+                    }
+                    
+                    if (parts.size <= textIdx) {
+                        android.util.Log.w("ASSParser", "Dialogue 字段不足: ${parts.size} <= $textIdx")
+                        continue
+                    }
                     
                     val startTime = parseASSTime(parts[startIdx].trim())
                     val endTime = parseASSTime(parts[endIdx].trim())
                     
                     // 获取文本内容（可能包含逗号，所以要重组）
-                    val text = if (textIdx < parts.size) {
-                        parts.subList(textIdx, parts.size).joinToString(",")
-                            .let { cleanASSText(it) }
-                    } else {
-                        ""
-                    }
+                    val rawText = parts.subList(textIdx, parts.size).joinToString(",")
+                    val cleanedText = cleanASSText(rawText)
                     
-                    if (text.isNotEmpty()) {
-                        items.add(SubtitleItem(startTime, endTime, text))
+                    if (cleanedText.isNotEmpty()) {
+                        items.add(SubtitleItem(startTime, endTime, cleanedText))
+                        // 只打印前3条用于调试
+                        if (items.size <= 3) {
+                            android.util.Log.d("ASSParser", "原始文本: $rawText")
+                            android.util.Log.d("ASSParser", "清理后: $cleanedText")
+                            android.util.Log.d("ASSParser", "解析字幕: $startTime-$endTime")
+                        }
                     }
                 } catch (e: Exception) {
                     android.util.Log.e("ASSParser", "Error parsing dialogue: $trimmedLine", e)
@@ -261,6 +287,16 @@ class ASSSubtitleParser {
         }
         
         return items.sortedBy { it.startTimeMs }
+    }
+    
+    /**
+     * 查找字段索引，支持多种可能的字段名
+     */
+    private fun findFieldIndex(formatIndices: Map<String, Int>, vararg fieldNames: String): Int? {
+        for (name in fieldNames) {
+            formatIndices[name]?.let { return it }
+        }
+        return null
     }
     
     /**
@@ -298,18 +334,42 @@ class ASSSubtitleParser {
     /**
      * 清理 ASS 文本中的格式标签
      * ASS 支持多种标签，如 {\i1} {\b1} {\fs20} 等
+     * 
+     * 处理顺序很重要：先处理换行符和特殊字符，再移除格式标签
      */
     private fun cleanASSText(text: String): String {
-        return text
-            // 移除所有 ASS 格式标签 (例如: {\i1}, {\b1}, {\fs20}, etc.)
-            .replace(Regex("""\\[^\\}]*"""), "")
-            .replace(Regex("""\{[^}]*\}"""), "")
-            // 处理 \N 和 \n (ASS的换行符)
-            .replace("\\N", "\n")
-            .replace("\\n", "\n")
-            // 处理 \h (硬空格)
-            .replace("\\h", " ")
-            .trim()
+        var cleaned = text
+        
+        // 1. 先处理换行符（在移除标签之前）
+        cleaned = cleaned.replace("\\N", "\n")  // ASS 标准换行符（硬换行）
+        cleaned = cleaned.replace("\\n", "\n")  // 软换行
+        
+        // 2. 处理硬空格
+        cleaned = cleaned.replace("\\h", " ")
+        
+        // 3. 移除所有花括号包裹的 ASS 格式标签
+        // 例如: {\i1}, {\b1}, {\fs20}, {\an8}, {\fn微软雅黑}, {\c&H00FFFF&}, etc.
+        cleaned = cleaned.replace(Regex("""\{[^}]*\}"""), "")
+        
+        // 4. 移除绘图命令（必须在其他反斜杠标签之前处理）
+        cleaned = cleaned.replace(Regex("""\\p\d+"""), "")
+        
+        // 5. 移除反斜杠开头的样式标签（但保留已处理的 \N, \n, \h）
+        // 匹配 \i1, \b1, \u1, \s1, \fs20, \fsp2, \fr45, \frx, \fry, \frz 等
+        // 但不要匹配单个 \ 后面跟换行或空格的情况
+        cleaned = cleaned.replace(Regex("""\\[ibusfr][a-z]*\d*"""), "")
+        cleaned = cleaned.replace(Regex("""\\(a|an|pos|move|org|fad|fade|t|clip|iclip|be|blur|bord|shad|alpha|c|1c|2c|3c|4c)\d*[^\\]*"""), "")
+        
+        // 6. 移除绘图相关的其他命令
+        cleaned = cleaned.replace(Regex("""\\pbo\d+"""), "")
+        
+        // 7. 清理多余的空格和换行
+        cleaned = cleaned.lines()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .joinToString("\n")
+        
+        return cleaned.trim()
     }
 }
 
