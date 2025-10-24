@@ -20,17 +20,25 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.window.Dialog
+import androidx.tv.material3.Surface
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.rememberDrawerState
@@ -46,7 +54,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerDefaults
 import androidx.tv.material3.Button
 import androidx.tv.material3.Text
@@ -138,27 +145,66 @@ fun DashboardScreen(
     var showExitDialog by remember { mutableStateOf(false) }
 
     if (showExitDialog) {
-        AlertDialog(
-            onDismissRequest = { showExitDialog = false },
-            title = { Text("退出应用") },
-            text = { Text("您确定要退出应用吗？") },
-            confirmButton = {
-                Button(onClick = {
-                    showExitDialog = false
-                    onBackPressed() // Exit the app
-                }) {
-                    Text("确定")
+        val cancelButtonFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+        
+        LaunchedEffect(Unit) {
+            kotlinx.coroutines.delay(100)
+            try {
+                cancelButtonFocusRequester.requestFocus()
+            } catch (e: Exception) {
+                android.util.Log.e("DashboardScreen", "退出对话框焦点分配失败", e)
+            }
+        }
+        
+        Dialog(onDismissRequest = { showExitDialog = false }) {
+            Surface(
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text(
+                        text = "退出应用",
+                        style = androidx.tv.material3.MaterialTheme.typography.headlineSmall
+                    )
+                    Text(
+                        text = "您确定要退出应用吗？",
+                        style = androidx.tv.material3.MaterialTheme.typography.bodyMedium
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)
+                    ) {
+                        Button(
+                            onClick = { showExitDialog = false },
+                            modifier = Modifier
+                                .weight(1f)
+                                .focusRequester(cancelButtonFocusRequester)
+                        ) {
+                            Text(
+                                text = "取消",
+                                modifier = Modifier.fillMaxWidth(),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                        Button(
+                            onClick = {
+                                showExitDialog = false
+                                onBackPressed() // Exit the app
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = "确定",
+                                modifier = Modifier.fillMaxWidth(),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
                 }
-            },
-            dismissButton = {
-                Button(onClick = { showExitDialog = false }) {
-                    Text("取消")
-                }
-            },
-            containerColor = MaterialTheme.colorScheme.surface,
-            textContentColor = MaterialTheme.colorScheme.onSurface,
-            titleContentColor = MaterialTheme.colorScheme.onSurface
-        )
+            }
+        }
     }
 
     var currentDestination: String? by remember { mutableStateOf(null) }

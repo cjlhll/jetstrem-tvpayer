@@ -27,8 +27,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
@@ -98,6 +100,11 @@ fun WebDavBrowserSection(
     var isEditMode by remember { mutableStateOf(false) }
     var hasError by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
+    
+    // 焦点管理
+    val addButtonFocusRequester = remember { FocusRequester() }
+    val firstItemFocusRequester = remember { FocusRequester() }
+    var shouldRestoreFocus by remember { mutableStateOf(false) }
 
     // 从Repository加载WebDAV配置和资源目录
     val webDavConfigs by repository.getAllWebDavConfigs().collectAsState(initial = emptyList())
@@ -110,6 +117,27 @@ fun WebDavBrowserSection(
         } catch (e: Exception) {
             hasError = true
             errorMessage = "初始化失败: ${e.message}"
+        }
+    }
+    
+    // 删除后恢复焦点
+    LaunchedEffect(shouldRestoreFocus, resourceDirectories.size) {
+        if (shouldRestoreFocus) {
+            kotlinx.coroutines.delay(100) // 等待UI更新
+            try {
+                if (resourceDirectories.isEmpty()) {
+                    // 没有目录了，焦点回到添加按钮
+                    addButtonFocusRequester.requestFocus()
+                    android.util.Log.d("WebDavBrowserSection", "焦点恢复到：添加按钮")
+                } else {
+                    // 还有目录，焦点回到第一个目录项
+                    firstItemFocusRequester.requestFocus()
+                    android.util.Log.d("WebDavBrowserSection", "焦点恢复到：第一个目录项")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("WebDavBrowserSection", "焦点恢复失败", e)
+            }
+            shouldRestoreFocus = false
         }
     }
 
@@ -173,7 +201,8 @@ fun WebDavBrowserSection(
                         isEditMode = false
                         showWebDavListDialog = true
                     },
-                    scale = androidx.tv.material3.ButtonDefaults.scale(focusedScale = 1f)
+                    scale = androidx.tv.material3.ButtonDefaults.scale(focusedScale = 1f),
+                    modifier = Modifier.focusRequester(addButtonFocusRequester)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Add,
@@ -218,7 +247,7 @@ fun WebDavBrowserSection(
                 }
             }
         } else {
-            items(resourceDirectories) { directory ->
+            itemsIndexed(resourceDirectories) { index, directory ->
                 ListItem(
                     headlineContent = {
                         Text(
@@ -284,6 +313,13 @@ fun WebDavBrowserSection(
                     },
                     modifier = Modifier
                         .padding(top = 8.dp)
+                        .then(
+                            if (index == 0) {
+                                Modifier.focusRequester(firstItemFocusRequester)
+                            } else {
+                                Modifier
+                            }
+                        )
                         .onKeyEvent { keyEvent ->
                             if (keyEvent.type == KeyEventType.KeyUp && 
                                 (keyEvent.key == Key.Menu || keyEvent.key == Key.DirectionLeft)) {
@@ -420,6 +456,17 @@ fun WebDavBrowserSection(
 
     // 删除确认对话框
     if (showDeleteDialog && selectedDirectoryForDelete != null) {
+        val cancelButtonFocusRequester = remember { FocusRequester() }
+        
+        LaunchedEffect(Unit) {
+            kotlinx.coroutines.delay(100)
+            try {
+                cancelButtonFocusRequester.requestFocus()
+            } catch (e: Exception) {
+                android.util.Log.e("WebDavBrowserSection", "删除对话框焦点分配失败", e)
+            }
+        }
+        
         Dialog(onDismissRequest = { showDeleteDialog = false }) {
             Surface(
                 shape = RoundedCornerShape(16.dp)
@@ -442,7 +489,9 @@ fun WebDavBrowserSection(
                     ) {
                         Button(
                             onClick = { showDeleteDialog = false },
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier
+                                .weight(1f)
+                                .focusRequester(cancelButtonFocusRequester)
                         ) {
                             Text(
                                 text = "取消",
@@ -458,6 +507,8 @@ fun WebDavBrowserSection(
                                             repository.deleteResourceDirectory(directory.id)
                                             // 删除成功后触发刷新回调
                                             onDirectoryDeleted?.invoke()
+                                            // 设置标志以恢复焦点
+                                            shouldRestoreFocus = true
                                         } catch (e: Exception) {
                                             hasError = true
                                             errorMessage = "删除资源目录失败: ${e.message}"

@@ -152,9 +152,7 @@ fun VideoPlayerScreenContent(
     var gsyPlayer by remember { mutableStateOf<StandardGSYVideoPlayer?>(null) }
     var playerInitialized by remember { mutableStateOf(false) }
     
-    // 内核状态管理
-    var currentCore by remember { mutableStateOf(PlayerCore.MEDIA3) }
-    var savedPositionForCoreSwitch by remember { mutableStateOf(0L) }
+    // 固定使用 Media3 内核（已移除内核切换功能）
     
     // 字幕管理器
     val subtitleManager = remember { SubtitleManager(context) }
@@ -354,7 +352,7 @@ fun VideoPlayerScreenContent(
     ) {
         // 使用 AndroidView 渲染 GSYVideoPlayer
         // key 参数确保内核切换时重新创建 View
-        androidx.compose.runtime.key(currentCore) {
+        androidx.compose.runtime.key("media3") {
             AndroidView(
                 factory = { ctx ->
                     StandardGSYVideoPlayer(ctx).apply {
@@ -362,7 +360,7 @@ fun VideoPlayerScreenContent(
                         val mapHeaders = hashMapOf<String, String>()
                         headers.forEach { (k, v) -> mapHeaders[k] = v }
                         
-                        android.util.Log.d("VideoPlayer", "Setting up GSY with headers: ${mapHeaders.keys}, core: $currentCore")
+                        android.util.Log.d("VideoPlayer", "Setting up GSY with headers: ${mapHeaders.keys}, core: Media3")
                         
                         // 设置视频 URL (url, cacheWithPlay, cachePath, mapHeadData, title)
                         setUp(movieDetails.videoUri, true, null, mapHeaders, "")
@@ -378,12 +376,8 @@ fun VideoPlayerScreenContent(
                         // 禁用触摸手势（TV 不需要）
                         setIsTouchWiget(false)
                         
-                        // 设置起始播放位置（考虑内核切换时的保存位置）
-                        val startPos = if (savedPositionForCoreSwitch > 0) {
-                            savedPositionForCoreSwitch
-                        } else {
-                            startPositionMs ?: 0L
-                        }
+                        // 设置起始播放位置
+                        val startPos = startPositionMs ?: 0L
                         
                         if (startPos > 0) {
                             seekOnStart = startPos
@@ -394,7 +388,7 @@ fun VideoPlayerScreenContent(
                         setVideoAllCallBack(object : GSYSampleCallBack() {
                             override fun onPrepared(url: String, vararg objects: Any) {
                                 super.onPrepared(url, *objects)
-                                android.util.Log.d("VideoPlayer", "Video prepared with core: $currentCore")
+                                android.util.Log.d("VideoPlayer", "Video prepared with core: Media3")
                                 
                                 // 检测并提取内嵌字幕
                                 if (EmbeddedSubtitleExtractor.mayHaveEmbeddedSubtitles(url)) {
@@ -425,8 +419,6 @@ fun VideoPlayerScreenContent(
                                     playerInitialized = true
                                     onVideoStarted()
                                 }
-                                // 清除保存的位置
-                                savedPositionForCoreSwitch = 0L
                             }
                             
                             override fun onPlayError(url: String, vararg objects: Any) {
@@ -440,7 +432,7 @@ fun VideoPlayerScreenContent(
                         
                         // 开始播放
                         startPlayLogic()
-                        android.util.Log.d("VideoPlayer", "GSYVideoPlayer initialized and started with core: $currentCore")
+                        android.util.Log.d("VideoPlayer", "GSYVideoPlayer initialized and started with core: Media3")
                     }
                 },
                 modifier = Modifier.fillMaxSize(),
@@ -475,39 +467,6 @@ fun VideoPlayerScreenContent(
                     player = null, // 不再传递 ExoPlayer
                     movieDetails = movieDetails,
                     focusRequester = focusRequester,
-                    currentCore = currentCore,
-                    onSwitchCore = { newCore ->
-                        if (newCore != currentCore) {
-                            android.util.Log.i("VideoPlayer", "开始切换内核: $currentCore -> $newCore")
-                            
-                            // 保存当前播放位置
-                            savedPositionForCoreSwitch = try {
-                                val pos = GSYVideoManager.instance().currentPosition
-                                android.util.Log.i("VideoPlayer", "保存播放位置: ${pos}ms")
-                                pos
-                            } catch (e: Throwable) {
-                                android.util.Log.e("VideoPlayer", "获取播放位置失败", e)
-                                0L
-                            }
-                            
-                            // 先释放当前播放器
-                            try {
-                                GSYVideoManager.releaseAllVideos()
-                                android.util.Log.d("VideoPlayer", "已释放旧播放器")
-                            } catch (e: Throwable) {
-                                android.util.Log.e("VideoPlayer", "释放播放器失败", e)
-                            }
-                            
-                            // 切换内核
-                            switchPlayerCore(context, newCore)
-                            
-                            // 更新当前内核（这将触发 AndroidView 重组）
-                            currentCore = newCore
-                            playerInitialized = false // 重置初始化标记
-                            
-                            android.util.Log.i("VideoPlayer", "内核切换完成: $newCore, 将从 ${savedPositionForCoreSwitch}ms 继续播放")
-                        }
-                    },
                     onShowControls = { videoPlayerState.showControls(isPlaying) },
                     onClickSubtitles = { 
                         showSubtitleConfig = true
@@ -560,48 +519,6 @@ fun VideoPlayerScreenContent(
     }
 }
 
-/**
- * 切换播放器内核
- */
-private fun switchPlayerCore(context: android.content.Context, core: PlayerCore) {
-    try {
-        // 先释放当前播放器
-        GSYVideoManager.releaseAllVideos()
-        
-        // 根据选择的内核切换
-        when (core) {
-            PlayerCore.MEDIA3 -> {
-                // 切换到 ExoPlayer 内核
-                com.shuyu.gsyvideoplayer.player.PlayerFactory.setPlayManager(
-                    tv.danmaku.ijk.media.exo2.Exo2PlayerManager::class.java
-                )
-                // 使用 ExoPlayerCacheManager（支持 m3u8）
-                com.shuyu.gsyvideoplayer.cache.CacheFactory.setCacheManager(
-                    tv.danmaku.ijk.media.exo2.ExoPlayerCacheManager::class.java
-                )
-                android.util.Log.i("VideoPlayer", "切换到 Media3 (ExoPlayer) 内核 + ExoPlayerCacheManager")
-            }
-            PlayerCore.IJK -> {
-                // TODO: 需要添加 IJK 依赖后才能使用
-                android.util.Log.w("VideoPlayer", "IJK 内核未启用，请添加依赖")
-                android.widget.Toast.makeText(context, "IJK 内核未启用", android.widget.Toast.LENGTH_SHORT).show()
-            }
-            PlayerCore.SYSTEM -> {
-                // 切换到系统播放器内核
-                com.shuyu.gsyvideoplayer.player.PlayerFactory.setPlayManager(
-                    com.shuyu.gsyvideoplayer.player.SystemPlayerManager::class.java
-                )
-                // 系统播放器不支持 ExoPlayerCacheManager，切换为 ProxyCacheManager
-                com.shuyu.gsyvideoplayer.cache.CacheFactory.setCacheManager(
-                    com.shuyu.gsyvideoplayer.cache.ProxyCacheManager::class.java
-                )
-                android.util.Log.i("VideoPlayer", "切换到系统播放器内核 + ProxyCacheManager")
-            }
-        }
-    } catch (e: Exception) {
-        android.util.Log.e("VideoPlayer", "切换内核失败", e)
-    }
-}
 
 /**
  * 配置内嵌字幕监听器

@@ -69,7 +69,7 @@ import com.google.jetstream.data.entities.MovieList
 import com.google.jetstream.presentation.screens.dashboard.rememberChildPadding
 
 enum class ItemDirection(val aspectRatio: Float) {
-    Vertical(10.5f / 14f),
+    Vertical(9.9f / 14f),  // 增加高度约10dp (从10.5改为9.9)
     Horizontal(16f / 9f);
 }
 

@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.ClosedCaption
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -46,15 +45,12 @@ fun VideoPlayerControls(
     player: Any?, // 不再使用，保留为 null
     movieDetails: MovieDetails,
     focusRequester: FocusRequester,
-    currentCore: com.google.jetstream.presentation.screens.videoPlayer.PlayerCore = com.google.jetstream.presentation.screens.videoPlayer.PlayerCore.MEDIA3,
-    onSwitchCore: (com.google.jetstream.presentation.screens.videoPlayer.PlayerCore) -> Unit = {},
     onShowControls: () -> Unit = {},
     onClickSubtitles: () -> Unit = {},
     onClickAudio: () -> Unit = {}
 ) {
     // 从 GSYVideoManager 获取播放状态
     var isPlaying by remember { mutableStateOf(false) }
-    var showCoreDialog by remember { mutableStateOf(false) }
     
     LaunchedEffect(Unit) {
         while (isActive) {
@@ -104,16 +100,6 @@ fun VideoPlayerControls(
                     onShowControls = onShowControls,
                     onClick = onClickAudio
                 )
-                // 内核切换按钮
-                VideoPlayerControlsIcon(
-                    icon = Icons.Default.Settings,
-                    isPlaying = isPlaying,
-                    contentDescription = "切换播放内核",
-                    onShowControls = onShowControls,
-                    onClick = {
-                        showCoreDialog = true
-                    }
-                )
             }
         },
         seeker = {
@@ -125,16 +111,4 @@ fun VideoPlayerControls(
         },
         more = null
     )
-    
-    // 内核选择对话框
-    if (showCoreDialog) {
-        CoreSelectorDialog(
-            currentCore = currentCore,
-            onDismiss = { showCoreDialog = false },
-            onCoreSelected = { newCore ->
-                onSwitchCore(newCore)
-                showCoreDialog = false
-            }
-        )
-    }
 }
