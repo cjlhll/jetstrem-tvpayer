@@ -297,14 +297,15 @@ fun VideoPlayerScreenContent(
         android.util.Log.d("VideoPlayer", "开始长按快进/快退，方向: $direction, 当前位置: ${holdSeekPreviewMs.longValue}ms, 总时长: ${duration}ms")
         holdSeekJob = coroutineScope.launch {
             val startAt = System.currentTimeMillis()
-            val intervalMs = 220L
+            val intervalMs = 100L  // 从220ms降低到100ms，提高刷新频率
             while (isActive) {
                 val elapsed = System.currentTimeMillis() - startAt
+                // 按照100ms间隔调整每次步进的大小，保持整体速度一致
                 val stepMs = when {
-                    elapsed < 1000L -> 6000L
-                    elapsed < 3000L -> 14000L
-                    elapsed < 6000L -> 24000L
-                    else -> 40000L
+                    elapsed < 1000L -> 2700L   // ~6s/s
+                    elapsed < 3000L -> 6400L   // ~14s/s
+                    elapsed < 6000L -> 11000L  // ~24s/s
+                    else -> 18000L             // ~40s/s
                 }
                 val next = (holdSeekPreviewMs.longValue + direction * stepMs)
                     .coerceIn(0L, if (duration > 0) duration else Long.MAX_VALUE)

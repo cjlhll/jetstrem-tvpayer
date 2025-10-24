@@ -39,7 +39,9 @@ fun HoldSeekProgressBar(
     height: Dp = 4.dp,
 ) {
     val clamped = progress.coerceIn(0f, 1f)
-    val timeText = remember(currentPositionMs) { formatTime(currentPositionMs) }
+    // 移除 remember 缓存，确保时间文本每次都实时计算
+    val timeText = formatTime(currentPositionMs)
+    val durationText = formatTime(durationMs)
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
@@ -89,7 +91,7 @@ fun HoldSeekProgressBar(
 
         // Total duration at the right end of the bar
         Text(
-            text = formatTime(durationMs),
+            text = durationText,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
             fontWeight = FontWeight.Medium,
             modifier = Modifier
