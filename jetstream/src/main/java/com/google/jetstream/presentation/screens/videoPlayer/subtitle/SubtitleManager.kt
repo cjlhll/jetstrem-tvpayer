@@ -49,6 +49,8 @@ class SubtitleManager {
     
     private val srtParser = SRTSubtitleParser()
     private val vttParser = VTTSubtitleParser()
+    private val assParser = ASSSubtitleParser()
+    private val ttmlParser = TTMLSubtitleParser()
     
     /**
      * 加载字幕文件
@@ -66,8 +68,8 @@ class SubtitleManager {
             subtitleItems = when (track.format) {
                 SubtitleFormat.SRT -> srtParser.parseSRT(content)
                 SubtitleFormat.VTT -> vttParser.parseVTT(content)
-                SubtitleFormat.ASS -> emptyList() // TODO: 实现 ASS 解析
-                SubtitleFormat.TTML -> emptyList() // TODO: 实现 TTML 解析
+                SubtitleFormat.ASS -> assParser.parseASS(content)
+                SubtitleFormat.TTML -> ttmlParser.parseTTML(content)
             }
             
             _selectedSubtitle.value = track
