@@ -167,10 +167,11 @@ fun VideoPlayerScreenContent(
         ExoPlayer.Builder(context)
             .setMediaSourceFactory(mediaSourceFactory)
             .build().apply {
-                // 设置字幕选择参数
+                // 允许 ExoPlayer 自动选择字幕轨道以便我们提取字幕数据
+                // 但通过隐藏 PlayerView 的 subtitleView 来避免重复显示
                 trackSelectionParameters = trackSelectionParameters
                     .buildUpon()
-                    .setPreferredTextLanguage("zh")
+                    .setPreferredTextLanguage("zh")  // 优先选择中文字幕供解码
                     .setSelectUndeterminedTextLanguage(true)
                     .build()
             }
@@ -491,6 +492,8 @@ fun VideoPlayerScreenContent(
                     player = exoPlayer
                     useController = false // 使用自定义控制器
                     keepScreenOn = true
+                    // 禁用 PlayerView 的字幕渲染，我们使用自定义字幕覆盖层
+                    subtitleView?.visibility = android.view.View.GONE
                 }
             },
             modifier = Modifier.fillMaxSize()
