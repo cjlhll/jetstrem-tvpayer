@@ -244,10 +244,11 @@ object OpenSubtitlesService {
     }
     
     /**
-     * 执行 HTTP GET 请求
+     * 执行 HTTP GET 请求（带智能重试机制）
      */
     private suspend fun get(path: String, params: Map<String, String>): String? {
-        val maxRetries = 2
+        val maxRetries = 3  // 增加到3次
+        var lastException: Exception? = null
         
         repeat(maxRetries) { attemptIndex ->
             try {
@@ -275,25 +276,72 @@ object OpenSubtitlesService {
                 val responseCode = conn.responseCode
                 if (responseCode == 200) {
                     val response = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-                    Log.d(TAG, "✓ 请求成功")
+                    Log.d(TAG, "✓ 请求成功 (尝试 ${attemptIndex + 1}/$maxRetries)")
                     return response
-                } else if (responseCode in 500..599 && attemptIndex < maxRetries - 1) {
-                    Log.w(TAG, "服务器错误: HTTP $responseCode，等待重试...")
-                    kotlinx.coroutines.delay(1000L)
                 } else {
-                    Log.e(TAG, "请求失败: HTTP $responseCode")
-                    return null
+                    // 判断是否应该重试
+                    val shouldRetry = when (responseCode) {
+                        401, 403 -> false  // 认证/权限问题，不重试
+                        404 -> false       // 资源不存在，不重试
+                        in 400..499 -> false  // 其他客户端错误，不重试
+                        else -> true       // 所有其他错误都重试
+                    }
+                    
+                    Log.w(TAG, "请求失败: HTTP $responseCode (尝试 ${attemptIndex + 1}/$maxRetries)")
+                    
+                    if (shouldRetry && attemptIndex < maxRetries - 1) {
+                        val delayMs = (attemptIndex + 1) * 1000L
+                        Log.d(TAG, "等待 ${delayMs}ms 后重试...")
+                        kotlinx.coroutines.delay(delayMs)
+                    } else {
+                        if (!shouldRetry) {
+                            Log.e(TAG, "不可重试的客户端错误: $responseCode")
+                        }
+                        return null
+                    }
                 }
                 
-            } catch (e: Exception) {
-                Log.e(TAG, "请求异常 (尝试 ${attemptIndex + 1}/$maxRetries)", e)
+            } catch (e: java.net.SocketTimeoutException) {
+                // 超时错误，一定重试
+                Log.e(TAG, "请求超时 (尝试 ${attemptIndex + 1}/$maxRetries)")
+                lastException = e
                 if (attemptIndex < maxRetries - 1) {
-                    kotlinx.coroutines.delay(1000L)
+                    val delayMs = (attemptIndex + 1) * 1500L  // 超时延迟久一点
+                    Log.d(TAG, "等待 ${delayMs}ms 后重试...")
+                    kotlinx.coroutines.delay(delayMs)
+                }
+            } catch (e: java.net.UnknownHostException) {
+                // DNS解析失败，重试
+                Log.e(TAG, "DNS解析失败 (尝试 ${attemptIndex + 1}/$maxRetries): ${e.message}")
+                lastException = e
+                if (attemptIndex < maxRetries - 1) {
+                    val delayMs = (attemptIndex + 1) * 2000L  // DNS问题延迟更久
+                    Log.d(TAG, "等待 ${delayMs}ms 后重试...")
+                    kotlinx.coroutines.delay(delayMs)
+                }
+            } catch (e: java.io.IOException) {
+                // 网络IO异常，重试
+                Log.e(TAG, "网络IO异常 (尝试 ${attemptIndex + 1}/$maxRetries): ${e.message}")
+                lastException = e
+                if (attemptIndex < maxRetries - 1) {
+                    val delayMs = (attemptIndex + 1) * 1000L
+                    Log.d(TAG, "等待 ${delayMs}ms 后重试...")
+                    kotlinx.coroutines.delay(delayMs)
+                }
+            } catch (e: Exception) {
+                // 其他所有异常，也重试
+                Log.e(TAG, "请求异常 (尝试 ${attemptIndex + 1}/$maxRetries): ${e.javaClass.simpleName} - ${e.message}")
+                lastException = e
+                
+                if (attemptIndex < maxRetries - 1) {
+                    val delayMs = (attemptIndex + 1) * 1000L
+                    Log.d(TAG, "等待 ${delayMs}ms 后重试...")
+                    kotlinx.coroutines.delay(delayMs)
                 }
             }
         }
         
-        Log.e(TAG, "所有重试均失败")
+        Log.e(TAG, "所有重试均失败 ($maxRetries 次尝试), 最后错误: ${lastException?.message}")
         return null
     }
     

@@ -415,30 +415,34 @@ object AssrtService {
                     val response = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
                     Log.d(TAG, "✓ 请求成功 (尝试 ${attemptIndex + 1}/$maxRetries)")
                     return response
-                } else if (responseCode in 500..599) {
-                    // 服务器错误，可以重试
-                    Log.w(TAG, "服务器错误: HTTP $responseCode (尝试 ${attemptIndex + 1}/$maxRetries)")
+                } else {
+                    // 任何非200的HTTP错误都记录并重试
+                    val shouldRetry = when (responseCode) {
+                        401, 403 -> false  // 认证/权限问题，不重试
+                        404 -> false       // 资源不存在，不重试
+                        in 400..499 -> false  // 其他客户端错误，不重试
+                        else -> true       // 5xx服务器错误、超时等，都重试
+                    }
+                    
+                    Log.w(TAG, "请求失败: HTTP $responseCode (尝试 ${attemptIndex + 1}/$maxRetries)")
                     val errorBody = conn.errorStream?.bufferedReader()?.use { it.readText() }
                     if (attemptIndex == 0) {
                         Log.d(TAG, "错误详情: ${errorBody?.take(200)}")
                     }
                     
-                    // 如果不是最后一次尝试，等待后重试
-                    if (attemptIndex < maxRetries - 1) {
+                    if (shouldRetry && attemptIndex < maxRetries - 1) {
                         val delayMs = (attemptIndex + 1) * 1000L // 递增延迟: 1s, 2s
                         Log.d(TAG, "等待 ${delayMs}ms 后重试...")
                         kotlinx.coroutines.delay(delayMs)
+                    } else {
+                        Log.e(TAG, "不可重试的错误或已达最大重试次数")
+                        return null
                     }
-                } else {
-                    // 客户端错误或其他，不重试
-                    Log.e(TAG, "请求失败: HTTP $responseCode")
-                    val errorBody = conn.errorStream?.bufferedReader()?.use { it.readText() }
-                    Log.e(TAG, "错误响应: $errorBody")
-                    return null
                 }
                 
             } catch (e: Exception) {
-                Log.e(TAG, "请求异常 (尝试 ${attemptIndex + 1}/$maxRetries)", e)
+                // 任何异常都尝试重试（网络超时、DNS失败、连接中断等）
+                Log.e(TAG, "请求异常 (尝试 ${attemptIndex + 1}/$maxRetries): ${e.javaClass.simpleName} - ${e.message}")
                 lastException = e
                 
                 // 如果不是最后一次尝试，等待后重试
@@ -446,6 +450,8 @@ object AssrtService {
                     val delayMs = (attemptIndex + 1) * 1000L
                     Log.d(TAG, "等待 ${delayMs}ms 后重试...")
                     kotlinx.coroutines.delay(delayMs)
+                } else {
+                    Log.e(TAG, "最后一次重试失败: ${lastException?.message}")
                 }
             }
         }
