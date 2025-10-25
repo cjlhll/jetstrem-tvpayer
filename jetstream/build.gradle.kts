@@ -27,6 +27,19 @@ kotlin {
     jvmToolchain(21)
 }
 
+// Compose编译器优化配置
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+    kotlinOptions {
+        jvmTarget = "21"
+        freeCompilerArgs += listOf(
+            "-opt-in=kotlin.RequiresOptIn",
+            "-Xcontext-receivers",
+            "-P",
+            "plugin:androidx.compose.compiler.plugins.kotlin:suppressKotlinVersionCompatibilityCheck=true"
+        )
+    }
+}
+
 android {
     namespace = "com.google.jetstream"
     // Needed for latest androidx snapshot build
@@ -51,19 +64,24 @@ android {
 
     buildTypes {
         getByName("release") {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             signingConfig = signingConfigs.getByName("debug")
-            // 如需混淆，请恢复下方 proguardFiles 并解决 R8 冲突
-            // proguardFiles(
-            //     getDefaultProguardFile("proguard-android-optimize.txt"),
-            //     "proguard-rules.pro"
-            // )
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
+        getByName("debug") {
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
     buildFeatures {
         compose = true
         buildConfig = true
     }
+
 
     // 仅生成 armeabi-v7a 安装包，适配老旧/32位 Android TV 设备
     defaultConfig {

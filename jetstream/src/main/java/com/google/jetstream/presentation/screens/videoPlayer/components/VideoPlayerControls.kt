@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -46,8 +45,7 @@ fun VideoPlayerControls(
     movieDetails: MovieDetails,
     focusRequester: FocusRequester,
     onShowControls: () -> Unit = {},
-    onClickSubtitles: () -> Unit = {},
-    onClickAudio: () -> Unit = {}
+    onClickSubtitles: () -> Unit = {}
 ) {
     // 从 ExoPlayer 获取播放状态
     var isPlaying by remember { mutableStateOf(false) }
@@ -90,13 +88,6 @@ fun VideoPlayerControls(
                     contentDescription = StringConstants.Composable.VideoPlayerControlClosedCaptionsButton,
                     onShowControls = onShowControls,
                     onClick = onClickSubtitles
-                )
-                VideoPlayerControlsIcon(
-                    icon = Icons.Default.Audiotrack,
-                    isPlaying = isPlaying,
-                    contentDescription = StringConstants.Composable.VideoPlayerControlSettingsButton,
-                    onShowControls = onShowControls,
-                    onClick = onClickAudio
                 )
             }
         },

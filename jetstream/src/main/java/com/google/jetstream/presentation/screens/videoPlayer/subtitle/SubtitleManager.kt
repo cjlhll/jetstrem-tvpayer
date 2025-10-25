@@ -24,6 +24,7 @@ import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.google.jetstream.data.remote.AssrtService
+import com.google.jetstream.data.remote.OpenSubtitlesService
 import kotlinx.coroutines.*
 import java.net.URL
 
@@ -53,6 +54,8 @@ class SubtitleManager(private val context: Context? = null) {
     private var subtitleItems: List<SubtitleItem> = emptyList()
     private var syncJob: Job? = null
     private var movieName: String? = null
+    private var movieTmdbId: String? = null
+    private var movieYear: Int? = null
     private var hasAutoSearched = false
     
     private val srtParser = SRTSubtitleParser()
@@ -171,12 +174,14 @@ class SubtitleManager(private val context: Context? = null) {
     }
     
     /**
-     * 设置电影名称（用于自动搜索字幕）
+     * 设置电影信息（用于自动搜索字幕）
      */
-    fun setMovieName(name: String) {
+    fun setMovieInfo(name: String, tmdbId: String? = null, year: Int? = null) {
         movieName = name
+        movieTmdbId = tmdbId
+        movieYear = year
         hasAutoSearched = false
-        android.util.Log.d("SubtitleManager", "设置电影名称: $name")
+        android.util.Log.d("SubtitleManager", "设置电影信息: name=$name, tmdbId=$tmdbId, year=$year")
     }
     
     /**
@@ -310,16 +315,41 @@ class SubtitleManager(private val context: Context? = null) {
                 _isLoading.value = true
                 android.util.Log.d("SubtitleManager", "开始自动搜索字幕: $name")
                 
-                val result = AssrtService.findAndDownloadBestSubtitle(name)
+                // === 尝试 ASSRT API（主字幕源） ===
+                android.util.Log.d("SubtitleManager", "→ 尝试字幕源1: ASSRT")
+                var result = try {
+                    AssrtService.findAndDownloadBestSubtitle(name)
+                } catch (e: Exception) {
+                    android.util.Log.w("SubtitleManager", "ASSRT 搜索异常: ${e.message}")
+                    null
+                }
                 
+                // === 如果 ASSRT 失败，尝试 OpenSubtitles（备用字幕源） ===
                 if (result == null) {
-                    android.util.Log.w("SubtitleManager", "未找到合适的字幕")
+                    android.util.Log.d("SubtitleManager", "→ ASSRT 失败，尝试字幕源2: OpenSubtitles")
+                    showToast("正在尝试备用字幕源...")
+                    
+                    result = try {
+                        OpenSubtitlesService.findAndDownloadBestSubtitle(
+                            movieName = name,
+                            tmdbId = movieTmdbId,
+                            year = movieYear
+                        )
+                    } catch (e: Exception) {
+                        android.util.Log.w("SubtitleManager", "OpenSubtitles 搜索异常: ${e.message}")
+                        null
+                    }
+                }
+                
+                // === 处理搜索结果 ===
+                if (result == null) {
+                    android.util.Log.w("SubtitleManager", "所有字幕源均未找到合适的字幕")
                     showToast("未找到适合的字幕")
                     return@withContext false
                 }
                 
                 val (content, format) = result
-                android.util.Log.d("SubtitleManager", "找到字幕，格式: $format, 大小: ${content.length} 字节")
+                android.util.Log.d("SubtitleManager", "✓ 找到字幕，格式: $format, 大小: ${content.length} 字节")
                 
                 val subtitleFormat = when (format.lowercase()) {
                     "srt" -> SubtitleFormat.SRT
@@ -344,7 +374,7 @@ class SubtitleManager(private val context: Context? = null) {
                 )
                 _selectedSubtitle.value = track
                 
-                android.util.Log.d("SubtitleManager", "成功加载 ${subtitleItems.size} 条字幕")
+                android.util.Log.d("SubtitleManager", "✓ 成功加载 ${subtitleItems.size} 条字幕")
                 
                 subtitleItems.take(3).forEach { item ->
                     android.util.Log.d("SubtitleManager", "字幕: ${item.startTimeMs}ms - ${item.endTimeMs}ms: ${item.text.take(50)}")
@@ -355,15 +385,19 @@ class SubtitleManager(private val context: Context? = null) {
                 
             } catch (e: java.net.SocketTimeoutException) {
                 android.util.Log.e("SubtitleManager", "搜索字幕超时", e)
-                showToast("字幕搜索超时，请检查网络连接")
+                showToast("字幕搜索超时，请稍后重试")
                 return@withContext false
             } catch (e: java.net.UnknownHostException) {
                 android.util.Log.e("SubtitleManager", "网络连接失败", e)
-                showToast("网络连接失败，无法搜索字幕")
+                showToast("网络连接失败，请检查网络")
+                return@withContext false
+            } catch (e: java.io.IOException) {
+                android.util.Log.e("SubtitleManager", "网络IO异常", e)
+                showToast("网络异常，字幕服务暂时不可用")
                 return@withContext false
             } catch (e: Exception) {
                 android.util.Log.e("SubtitleManager", "自动搜索加载字幕失败", e)
-                showToast("字幕加载失败: ${e.message?.take(30) ?: "未知错误"}")
+                showToast("字幕加载失败，请稍后重试")
                 return@withContext false
             } finally {
                 _isLoading.value = false

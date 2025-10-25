@@ -148,51 +148,57 @@ private fun Catalog(
     val showsFocusRequester = remember { FocusRequester() }
     
     // 跟踪焦点是否已经分配过（避免重复分配）
-    var focusAllocated by rememberSaveable { mutableStateOf(false) }
+    // 使用 remember 而不是 rememberSaveable，这样每次重组都会重置
+    var focusAllocated by remember { mutableStateOf(false) }
     
-    // 统一的焦点管理逻辑
-    LaunchedEffect(
-        focusRestoreTrigger,
-        recentlyWatchedMovies,
-        scraped,
-        trendingMovies,
-        scrapedTv,
-        nowPlayingMovies
-    ) {
-        android.util.Log.d("HomeScreen", "焦点管理触发 - focusRestoreTrigger=$focusRestoreTrigger, " +
-                "最近观看=${recentlyWatchedMovies.size}, 电影=${scraped.size}, 电视剧=${scrapedTv.size}")
+    // === 优化的焦点管理逻辑 ===
+    // 只依赖 focusRestoreTrigger，避免数据变化时反复触发
+    LaunchedEffect(focusRestoreTrigger) {
+        // 当有返回触发时，允许重新分配焦点
+        if (focusRestoreTrigger > 0) {
+            focusAllocated = false
+        }
         
-        // === 智能等待机制（类似Promise API） ===
-        if (focusRestoreTrigger > 0 && lastFocusedSection == 1 && recentlyWatchedMovies.isEmpty()) {
-            // 场景：从播放器返回且上次焦点在最近观看，但数据尚未加载
+        android.util.Log.d("HomeScreen", "焦点管理触发 - focusRestoreTrigger=$focusRestoreTrigger")
+        
+        // === 智能等待机制 ===
+        if (focusRestoreTrigger > 0 && lastFocusedSection == 1) {
+            // 场景：从播放器返回且上次焦点在最近观看
             android.util.Log.d("HomeScreen", "等待最近观看数据加载...")
             
             val startTime = System.currentTimeMillis()
             // 使用Flow扩展函数等待数据，类似Promise.then()
-            val dataLoaded = recentlyWatchedVm.recentlyWatchedMovies.awaitNonEmpty(timeoutMillis = 1000L)
+            val dataLoaded = recentlyWatchedVm.recentlyWatchedMovies.awaitNonEmpty(timeoutMillis = 1500L)
             val waitedMs = System.currentTimeMillis() - startTime
             
             if (dataLoaded) {
                 android.util.Log.d("HomeScreen", "✓ 最近观看数据已加载 (${waitedMs}ms)")
+                // 数据加载完成后额外等待UI渲染
+                kotlinx.coroutines.delay(200)
             } else {
-                android.util.Log.d("HomeScreen", "⚠ 最近观看数据加载超时 (${waitedMs}ms)")
+                android.util.Log.d("HomeScreen", "⚠ 最近观看数据加载超时 (${waitedMs}ms)，使用其他区域")
+                // 超时后也等待一下，确保其他区域渲染完成
+                kotlinx.coroutines.delay(300)
             }
-            
-            // 额外等待UI渲染
-            kotlinx.coroutines.delay(150)
         } else {
-            // 其他场景：固定延迟等待渲染
-            val delayTime = if (focusRestoreTrigger > 0) 300L else 200L
+            // 其他场景：等待渲染完成
+            // 首次进入时间稍长，返回时间可以短一些
+            val delayTime = if (focusRestoreTrigger > 0) 400L else 500L
             kotlinx.coroutines.delay(delayTime)
         }
         
+        // 获取当前数据状态（快照）
+        val currentRecentlyWatched = recentlyWatchedMovies
+        val currentScraped = scraped
+        val currentScrapedTv = scrapedTv
+        
         android.util.Log.d("HomeScreen", "等待完成 - " +
-                "最近观看=${recentlyWatchedMovies.size}, 电影=${scraped.size}, 电视剧=${scrapedTv.size}")
+                "最近观看=${currentRecentlyWatched.size}, 电影=${currentScraped.size}, 电视剧=${currentScrapedTv.size}")
         
         // 如果所有模块都为空，不需要分配焦点
-        val movieList = if (scraped.isNotEmpty()) scraped else trendingMovies
-        val tvList = if (scrapedTv.isNotEmpty()) scrapedTv else nowPlayingMovies
-        val hasAnyContent = recentlyWatchedMovies.isNotEmpty() || movieList.isNotEmpty() || tvList.isNotEmpty()
+        val movieList = if (currentScraped.isNotEmpty()) currentScraped else trendingMovies
+        val tvList = if (currentScrapedTv.isNotEmpty()) currentScrapedTv else nowPlayingMovies
+        val hasAnyContent = currentRecentlyWatched.isNotEmpty() || movieList.isNotEmpty() || tvList.isNotEmpty()
         
         if (!hasAnyContent) {
             android.util.Log.d("HomeScreen", "所有模块都为空，无需分配焦点")
@@ -201,29 +207,28 @@ private fun Catalog(
         
         if (focusRestoreTrigger > 0) {
             // === 场景1：从其他页面返回，恢复焦点 ===
-            // 只恢复到有数据的区域
             android.util.Log.d("HomeScreen", "尝试恢复焦点到区域: $lastFocusedSection " +
-                    "(1=最近观看[${recentlyWatchedMovies.size}], 2=电影[${movieList.size}], 3=电视剧[${tvList.size}])")
+                    "(1=最近观看[${currentRecentlyWatched.size}], 2=电影[${movieList.size}], 3=电视剧[${tvList.size}])")
             
             val focusRestored = try {
                 when {
-                    lastFocusedSection == 1 && recentlyWatchedMovies.isNotEmpty() -> {
-                        android.util.Log.d("HomeScreen", "恢复焦点到最近观看")
+                    lastFocusedSection == 1 && currentRecentlyWatched.isNotEmpty() -> {
+                        android.util.Log.d("HomeScreen", "→ 恢复焦点到最近观看")
                         recentlyWatchedFocusRequester.requestFocus()
                         true
                     }
                     lastFocusedSection == 2 && movieList.isNotEmpty() -> {
-                        android.util.Log.d("HomeScreen", "恢复焦点到电影")
+                        android.util.Log.d("HomeScreen", "→ 恢复焦点到电影")
                         moviesFocusRequester.requestFocus()
                         true
                     }
                     lastFocusedSection == 3 && tvList.isNotEmpty() -> {
-                        android.util.Log.d("HomeScreen", "恢复焦点到电视剧")
+                        android.util.Log.d("HomeScreen", "→ 恢复焦点到电视剧")
                         showsFocusRequester.requestFocus()
                         true
                     }
                     else -> {
-                        android.util.Log.d("HomeScreen", "无法恢复到区域$lastFocusedSection (数据为空或区域无效)")
+                        android.util.Log.d("HomeScreen", "✗ 无法恢复到区域$lastFocusedSection (数据为空或区域无效)")
                         false
                     }
                 }
@@ -236,20 +241,20 @@ private fun Catalog(
             if (!focusRestored) {
                 try {
                     when {
-                        recentlyWatchedMovies.isNotEmpty() -> {
+                        currentRecentlyWatched.isNotEmpty() -> {
                             recentlyWatchedFocusRequester.requestFocus()
                             homeViewModel.updateLastFocusedSection(1)
-                            android.util.Log.d("HomeScreen", "返回恢复焦点失败，使用默认：最近观看")
+                            android.util.Log.d("HomeScreen", "→ 降级到默认：最近观看")
                         }
                         movieList.isNotEmpty() -> {
                             moviesFocusRequester.requestFocus()
                             homeViewModel.updateLastFocusedSection(2)
-                            android.util.Log.d("HomeScreen", "返回恢复焦点失败，使用默认：电影")
+                            android.util.Log.d("HomeScreen", "→ 降级到默认：电影")
                         }
                         tvList.isNotEmpty() -> {
                             showsFocusRequester.requestFocus()
                             homeViewModel.updateLastFocusedSection(3)
-                            android.util.Log.d("HomeScreen", "返回恢复焦点失败，使用默认：电视剧")
+                            android.util.Log.d("HomeScreen", "→ 降级到默认：电视剧")
                         }
                     }
                 } catch (e: Exception) {
@@ -258,29 +263,31 @@ private fun Catalog(
             }
         } else if (!focusAllocated) {
             // === 场景2：首次进入应用，按优先级分配焦点 ===
-            // 优先级：有数据的最近观看 > 有数据的电影 > 有数据的电视剧
+            android.util.Log.d("HomeScreen", "首次焦点分配 - " +
+                    "最近观看[${currentRecentlyWatched.size}], 电影[${movieList.size}], 电视剧[${tvList.size}]")
+            
             val focusAssigned = try {
                 when {
-                    recentlyWatchedMovies.isNotEmpty() -> {
+                    currentRecentlyWatched.isNotEmpty() -> {
                         recentlyWatchedFocusRequester.requestFocus()
                         homeViewModel.updateLastFocusedSection(1)
-                        android.util.Log.d("HomeScreen", "首次焦点分配：最近观看")
+                        android.util.Log.d("HomeScreen", "→ 首次焦点：最近观看")
                         true
                     }
                     movieList.isNotEmpty() -> {
                         moviesFocusRequester.requestFocus()
                         homeViewModel.updateLastFocusedSection(2)
-                        android.util.Log.d("HomeScreen", "首次焦点分配：电影")
+                        android.util.Log.d("HomeScreen", "→ 首次焦点：电影")
                         true
                     }
                     tvList.isNotEmpty() -> {
                         showsFocusRequester.requestFocus()
                         homeViewModel.updateLastFocusedSection(3)
-                        android.util.Log.d("HomeScreen", "首次焦点分配：电视剧")
+                        android.util.Log.d("HomeScreen", "→ 首次焦点：电视剧")
                         true
                     }
                     else -> {
-                        android.util.Log.d("HomeScreen", "无可用内容，无法分配焦点")
+                        android.util.Log.d("HomeScreen", "✗ 无可用内容，无法分配焦点")
                         false
                     }
                 }
@@ -291,7 +298,10 @@ private fun Catalog(
             
             if (focusAssigned) {
                 focusAllocated = true
+                android.util.Log.d("HomeScreen", "✓ 焦点分配完成，标记为已分配")
             }
+        } else {
+            android.util.Log.d("HomeScreen", "焦点已经分配过，跳过")
         }
     }
 

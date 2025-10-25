@@ -48,5 +48,8 @@ data class MovieDetails(
     val castAndCrew: List<MovieCast>,
     // 电视剧季信息
     val availableSeasons: List<TvSeason> = emptyList(),
-    val isTV: Boolean = false
+    val isTV: Boolean = false,
+    // 用于字幕匹配的元数据
+    val tmdbId: String? = null,  // TMDB ID，用于精确匹配字幕
+    val year: Int? = null        // 发行年份，用于辅助匹配
 )

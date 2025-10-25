@@ -198,7 +198,11 @@ fun VideoPlayerScreenContent(
 
     // 初始化字幕管理器和播放器
     LaunchedEffect(Unit) {
-        subtitleManager.setMovieName(movieDetails.name)
+        subtitleManager.setMovieInfo(
+            name = movieDetails.name,
+            tmdbId = movieDetails.tmdbId,
+            year = movieDetails.year
+        )
         subtitleManager.startSync(coroutineScope, exoPlayer)
 
         // 准备播放媒体
@@ -343,13 +347,6 @@ fun VideoPlayerScreenContent(
         onDispose {
             try {
                 subtitleManager.stopSync()
-
-                val currentPosition = exoPlayer.currentPosition
-                val duration = exoPlayer.duration
-                if (currentPosition > 0 && duration > 0) {
-                    onSaveProgress(currentPosition, duration)
-                }
-
                 exoPlayer.release()
             } catch (e: Exception) {
                 android.util.Log.e("VideoPlayer", "Error releasing player", e)
@@ -372,6 +369,9 @@ fun VideoPlayerScreenContent(
     }
 
     val videoPlayerState = rememberVideoPlayerState(hideSeconds = 4)
+    
+    // 控制视频是否退出中（用于隐藏画面）
+    var isExiting by remember { mutableStateOf(false) }
 
     android.util.Log.i("VideoPlayer", "准备播放 URL: ${movieDetails.videoUri}, startPosition: ${startPositionMs}ms")
 
@@ -382,16 +382,27 @@ fun VideoPlayerScreenContent(
         }
 
         try {
+            // 先设置退出状态，隐藏画面
+            isExiting = true
+            
             val currentPosition = exoPlayer.currentPosition
             val duration = exoPlayer.duration
             if (currentPosition > 0 && duration > 0) {
                 onSaveProgress(currentPosition, duration)
             }
-            exoPlayer.release()
+            
+            // 停止播放并清除画面
+            exoPlayer.pause()
+            exoPlayer.clearVideoSurface()
         } catch (e: Exception) {
             android.util.Log.e("VideoPlayer", "Error on back", e)
         }
-        onBackPressed()
+        
+        // 延迟一帧后再退出，确保UI已更新
+        coroutineScope.launch {
+            delay(16) // 一帧的时间
+            onBackPressed()
+        }
     })
 
     val pulseState = rememberVideoPlayerPulseState()
@@ -485,19 +496,25 @@ fun VideoPlayerScreenContent(
             )
             .focusable()
     ) {
-        // 使用 AndroidView 渲染 PlayerView
-        AndroidView(
-            factory = { ctx ->
-                PlayerView(ctx).apply {
-                    player = exoPlayer
-                    useController = false // 使用自定义控制器
-                    keepScreenOn = true
-                    // 禁用 PlayerView 的字幕渲染，我们使用自定义字幕覆盖层
-                    subtitleView?.visibility = android.view.View.GONE
-                }
-            },
-            modifier = Modifier.fillMaxSize()
-        )
+        // 使用 AndroidView 渲染 PlayerView（退出时隐藏）
+        if (!isExiting) {
+            AndroidView(
+                factory = { ctx ->
+                    PlayerView(ctx).apply {
+                        player = exoPlayer
+                        useController = false // 使用自定义控制器
+                        keepScreenOn = true
+                        // 禁用 PlayerView 的字幕渲染，我们使用自定义字幕覆盖层
+                        subtitleView?.visibility = android.view.View.GONE
+                    }
+                },
+                onRelease = { playerView ->
+                    // 清除 PlayerView 的 player 引用
+                    playerView.player = null
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+        }
 
         val focusRequester = remember { FocusRequester() }
 
@@ -565,9 +582,6 @@ fun VideoPlayerScreenContent(
                     onShowControls = { videoPlayerState.showControls(isPlaying) },
                     onClickSubtitles = {
                         showSubtitleConfig = true
-                    },
-                    onClickAudio = {
-                        // TODO: 实现音轨选择功能
                     }
                 )
             }

@@ -143,6 +143,15 @@ class MovieRepositoryImpl @Inject constructor(
             else -> "影片"
         }
         
+        // 从 releaseDate 提取年份
+        val year = scrapedItem.releaseDate?.let {
+            try {
+                it.substring(0, 4).toIntOrNull()
+            } catch (e: Exception) {
+                null
+            }
+        }
+        
         return MovieDetails(
             id = scrapedItem.id,
             videoUri = scrapedItem.sourcePath ?: "",
@@ -160,7 +169,9 @@ class MovieRepositoryImpl @Inject constructor(
             music = scrapedItem.music ?: "",
             castAndCrew = castAndCrew,
             availableSeasons = availableSeasons,
-            isTV = scrapedItem.type == "tv"
+            isTV = scrapedItem.type == "tv",
+            tmdbId = scrapedItem.id,  // TMDB ID
+            year = year  // 年份
         )
     }
     

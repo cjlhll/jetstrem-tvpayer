@@ -318,7 +318,10 @@ fun DashboardScreen(
                         }
                         .focusRequester(drawerFocusRequester)
                 ) {
-                    DrawerContent(dashboardViewModel)
+                    DrawerContent(
+                        dashboardViewModel = dashboardViewModel,
+                        isDrawerOpen = drawerState.isOpen
+                    )
                 }
             },
             scrimColor = androidx.compose.material3.MaterialTheme.colorScheme.scrim.copy(alpha = 0.6f)
@@ -435,23 +438,29 @@ private fun Body(
 
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
-private fun DrawerContent(dashboardViewModel: DashboardViewModel) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surface)
-            .focusRestorer()
-    ) {
-        // WebDAV 浏览器内容 - 使用更小的 padding 适配抽屉
-        com.google.jetstream.presentation.screens.profile.WebDavBrowserSection(
+private fun DrawerContent(
+    dashboardViewModel: DashboardViewModel,
+    isDrawerOpen: Boolean
+) {
+    // 只有在drawer打开时才渲染内容，避免焦点移动到隐藏的drawer中
+    if (isDrawerOpen) {
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(top = 16.dp),
-            horizontalPadding = 16.dp,
-            onDirectoryDeleted = {
-                // 删除资源目录后刷新首页数据
-                dashboardViewModel.refreshAndScrape()
-            }
-        )
+                .background(MaterialTheme.colorScheme.surface)
+                .focusRestorer()
+        ) {
+            // WebDAV 浏览器内容 - 使用更小的 padding 适配抽屉
+            com.google.jetstream.presentation.screens.profile.WebDavBrowserSection(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = 16.dp),
+                horizontalPadding = 16.dp,
+                onDirectoryDeleted = {
+                    // 删除资源目录后刷新首页数据
+                    dashboardViewModel.refreshAndScrape()
+                }
+            )
+        }
     }
 }

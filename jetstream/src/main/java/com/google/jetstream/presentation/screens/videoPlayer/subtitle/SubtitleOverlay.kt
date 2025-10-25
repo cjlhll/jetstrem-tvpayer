@@ -49,7 +49,7 @@ fun SubtitleOverlay(
     ) {
         // 使用多层文字模拟描边效果
         // 底层：黑色描边（绘制多次形成描边）
-        val strokeWidth = 3.dp
+        val strokeWidth = 1.2.dp
         val density = LocalDensity.current
         val strokeWidthPx = with(density) { strokeWidth.toPx() }
         

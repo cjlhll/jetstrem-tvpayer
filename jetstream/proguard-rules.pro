@@ -20,6 +20,18 @@
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
 
+# ========== Android Framework & XML ==========
+-dontwarn org.xmlpull.v1.**
+-dontnote org.xmlpull.v1.**
+-keep,allowobfuscation class org.xmlpull.v1.** { *; }
+-keep interface org.xmlpull.v1.** { *; }
+-dontwarn org.kxml2.io.**
+-dontnote org.kxml2.io.**
+-keep class org.kxml2.io.** { *; }
+
+# 解决 R8 XmlResourceParser 警告
+-dontwarn android.content.res.XmlResourceParser
+
 # ========== Media3 (ExoPlayer) ==========
 -keep class androidx.media3.** { *; }
 -keep interface androidx.media3.** { *; }
@@ -42,3 +54,79 @@
     public <init>(android.content.Context, android.util.AttributeSet);
     public <init>(android.content.Context, android.util.AttributeSet, int);
 }
+
+# ========== Jetpack Compose 优化 ==========
+-keepclassmembers class androidx.compose.** { *; }
+-keep class androidx.compose.runtime.** { *; }
+-keep class androidx.compose.ui.** { *; }
+-dontwarn androidx.compose.**
+
+# 保持 Compose 相关的反射
+-keepattributes *Annotation*
+-keepattributes Signature
+-keepattributes InnerClasses
+-keepattributes EnclosingMethod
+
+# ========== Hilt / Dagger ==========
+-keep class dagger.** { *; }
+-keep class javax.inject.** { *; }
+-keep class * extends dagger.hilt.** { *; }
+-dontwarn dagger.**
+
+# ========== Kotlin Coroutines ==========
+-keepclassmembernames class kotlinx.** {
+    volatile <fields>;
+}
+-keep class kotlinx.coroutines.** { *; }
+-dontwarn kotlinx.coroutines.**
+
+# ========== Kotlin Serialization ==========
+-keepattributes *Annotation*, InnerClasses
+-dontnote kotlinx.serialization.AnnotationsKt
+-keepclassmembers class kotlinx.serialization.json.** {
+    *** Companion;
+}
+-keepclasseswithmembers class kotlinx.serialization.json.** {
+    kotlinx.serialization.KSerializer serializer(...);
+}
+-keep,includedescriptorclasses class com.google.jetstream.**$$serializer { *; }
+-keepclassmembers class com.google.jetstream.** {
+    *** Companion;
+}
+-keepclasseswithmembers class com.google.jetstream.** {
+    kotlinx.serialization.KSerializer serializer(...);
+}
+
+# ========== OkHttp ==========
+-dontwarn okhttp3.**
+-keep class okhttp3.** { *; }
+-keep interface okhttp3.** { *; }
+
+# ========== Room Database ==========
+-keep class * extends androidx.room.RoomDatabase
+-keep @androidx.room.Entity class *
+-dontwarn androidx.room.paging.**
+
+# ========== Coil 图片加载 ==========
+-keep class coil.** { *; }
+-dontwarn coil.**
+
+# ========== 移除日志以提升性能 (Release) ==========
+-assumenosideeffects class android.util.Log {
+    public static *** d(...);
+    public static *** v(...);
+    public static *** i(...);
+    public static *** w(...);
+    public static *** e(...);
+}
+
+# ========== 通用优化 ==========
+# 启用优化
+-optimizations !code/simplification/arithmetic,!code/simplification/cast,!field/*,!class/merging/*
+-optimizationpasses 5
+-dontusemixedcaseclassnames
+-verbose
+
+# 保持行号用于崩溃分析
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile

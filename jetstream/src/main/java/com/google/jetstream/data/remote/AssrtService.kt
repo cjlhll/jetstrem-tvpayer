@@ -369,53 +369,89 @@ object AssrtService {
     }
     
     /**
-     * 执行 HTTP GET 请求
+     * 执行 HTTP GET 请求（带重试机制）
      */
-    private fun get(path: String, params: Map<String, String>): String? {
-        try {
-            val queryString = params.entries.joinToString("&") { (key, value) ->
-                "$key=${URLEncoder.encode(value, "UTF-8")}"
-            }
-            val url = URL("$BASE_URL$path?$queryString")
-            
-            Log.d(TAG, "请求: $url")
-            
-            val conn = url.openConnection() as HttpURLConnection
-            
-            // 配置 SSL（如果是 HTTPS）
-            if (conn is HttpsURLConnection) {
-                try {
-                    val sslContext = SSLContext.getInstance("TLS")
-                    sslContext.init(null, createTrustAllTrustManager(), java.security.SecureRandom())
-                    conn.sslSocketFactory = sslContext.socketFactory
-                    conn.hostnameVerifier = javax.net.ssl.HostnameVerifier { _, _ -> true }
-                } catch (e: Exception) {
-                    Log.w(TAG, "配置SSL失败，使用默认配置: ${e.message}")
+    private suspend fun get(path: String, params: Map<String, String>): String? {
+        val maxRetries = 3
+        var lastException: Exception? = null
+        
+        repeat(maxRetries) { attemptIndex ->
+            try {
+                val queryString = params.entries.joinToString("&") { (key, value) ->
+                    "$key=${URLEncoder.encode(value, "UTF-8")}"
+                }
+                val url = URL("$BASE_URL$path?$queryString")
+                
+                if (attemptIndex == 0) {
+                    Log.d(TAG, "请求: $url")
+                } else {
+                    Log.d(TAG, "重试 ($attemptIndex/$maxRetries): $url")
+                }
+                
+                val conn = url.openConnection() as HttpURLConnection
+                
+                // 配置 SSL（如果是 HTTPS）
+                if (conn is HttpsURLConnection) {
+                    try {
+                        val sslContext = SSLContext.getInstance("TLS")
+                        sslContext.init(null, createTrustAllTrustManager(), java.security.SecureRandom())
+                        conn.sslSocketFactory = sslContext.socketFactory
+                        conn.hostnameVerifier = javax.net.ssl.HostnameVerifier { _, _ -> true }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "配置SSL失败，使用默认配置: ${e.message}")
+                    }
+                }
+                
+                conn.apply {
+                    requestMethod = "GET"
+                    setRequestProperty("Accept", "application/json")
+                    setRequestProperty("User-Agent", "JetStream-Android/1.0")
+                    connectTimeout = 20000
+                    readTimeout = 20000
+                }
+                
+                val responseCode = conn.responseCode
+                if (responseCode == 200) {
+                    val response = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                    Log.d(TAG, "✓ 请求成功 (尝试 ${attemptIndex + 1}/$maxRetries)")
+                    return response
+                } else if (responseCode in 500..599) {
+                    // 服务器错误，可以重试
+                    Log.w(TAG, "服务器错误: HTTP $responseCode (尝试 ${attemptIndex + 1}/$maxRetries)")
+                    val errorBody = conn.errorStream?.bufferedReader()?.use { it.readText() }
+                    if (attemptIndex == 0) {
+                        Log.d(TAG, "错误详情: ${errorBody?.take(200)}")
+                    }
+                    
+                    // 如果不是最后一次尝试，等待后重试
+                    if (attemptIndex < maxRetries - 1) {
+                        val delayMs = (attemptIndex + 1) * 1000L // 递增延迟: 1s, 2s
+                        Log.d(TAG, "等待 ${delayMs}ms 后重试...")
+                        kotlinx.coroutines.delay(delayMs)
+                    }
+                } else {
+                    // 客户端错误或其他，不重试
+                    Log.e(TAG, "请求失败: HTTP $responseCode")
+                    val errorBody = conn.errorStream?.bufferedReader()?.use { it.readText() }
+                    Log.e(TAG, "错误响应: $errorBody")
+                    return null
+                }
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "请求异常 (尝试 ${attemptIndex + 1}/$maxRetries)", e)
+                lastException = e
+                
+                // 如果不是最后一次尝试，等待后重试
+                if (attemptIndex < maxRetries - 1) {
+                    val delayMs = (attemptIndex + 1) * 1000L
+                    Log.d(TAG, "等待 ${delayMs}ms 后重试...")
+                    kotlinx.coroutines.delay(delayMs)
                 }
             }
-            
-            conn.apply {
-                requestMethod = "GET"
-                setRequestProperty("Accept", "application/json")
-                setRequestProperty("User-Agent", "JetStream-Android/1.0")
-                connectTimeout = 15000
-                readTimeout = 15000
-            }
-            
-            val responseCode = conn.responseCode
-            if (responseCode == 200) {
-                return conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-            } else {
-                Log.e(TAG, "请求失败: HTTP $responseCode")
-                val errorBody = conn.errorStream?.bufferedReader()?.use { it.readText() }
-                Log.e(TAG, "错误响应: $errorBody")
-                return null
-            }
-            
-        } catch (e: Exception) {
-            Log.e(TAG, "请求异常", e)
-            return null
         }
+        
+        Log.e(TAG, "所有重试均失败 ($maxRetries 次尝试)")
+        return null
     }
     
     /**
