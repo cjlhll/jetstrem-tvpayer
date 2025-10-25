@@ -156,9 +156,13 @@ class SubtitleManager(private val context: Context? = null) {
     
     /**
      * 根据播放位置查找对应的字幕
+     * 
+     * 延迟逻辑说明：
+     * - 如果字幕比视频晚出现（延迟），delayMs 应该设置为正值，让播放器提前去找字幕
+     * - 如果字幕比视频早出现（提前），delayMs 应该设置为负值，让播放器延后去找字幕
      */
     private fun findSubtitleAtPosition(positionMs: Long): SubtitleItem? {
-        val adjustedPosition = positionMs + _delayMs.value
+        val adjustedPosition = positionMs - _delayMs.value
         return subtitleItems.firstOrNull { 
             adjustedPosition >= it.startTimeMs && adjustedPosition <= it.endTimeMs 
         }
